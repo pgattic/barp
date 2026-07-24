@@ -312,22 +312,30 @@ async fn index() -> impl IntoResponse {
 
 async fn static_asset(uri: axum::http::Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
-    static_asset_path(if path.is_empty() { "index.html" } else { path }).await
+    match Assets::get(if path.is_empty() { "index.html" } else { path }) {
+        Some(asset) => asset_response(path, asset),
+        None if path.starts_with("api/") || path.starts_with("emulatorjs/") => {
+            AppError::NotFound.into_response()
+        }
+        None => static_asset_path("index.html").await,
+    }
 }
 
 async fn static_asset_path(path: &str) -> Response {
     match Assets::get(path) {
-        Some(asset) => {
-            let mime = mime_guess::from_path(path).first_or_octet_stream();
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_str(mime.as_ref()).unwrap(),
-            );
-            (headers, asset.data).into_response()
-        }
+        Some(asset) => asset_response(path, asset),
         None => AppError::NotFound.into_response(),
     }
+}
+
+fn asset_response(path: &str, asset: rust_embed::EmbeddedFile) -> Response {
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(mime.as_ref()).unwrap(),
+    );
+    (headers, asset.data).into_response()
 }
 
 async fn login(

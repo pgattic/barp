@@ -26,6 +26,12 @@ The first path segment selects the EmulatorJS core. This MVP recognizes:
 
 Only recognized ROM extensions are shown by the browser.
 
+The frontend mirrors ROM-relative paths in the browser URL:
+
+- `/` shows the system folders.
+- `/nes` browses `roms/nes`.
+- `/nes/game.nes` opens `roms/nes/game.nes` in the player.
+
 ## EmulatorJS Assets
 
 The embedded frontend expects EmulatorJS's runtime assets under `frontend/emulatorjs/data/`, served as `/emulatorjs/data/`.

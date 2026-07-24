@@ -1,5 +1,4 @@
 let bootstrap = null;
-let currentPath = "";
 
 const loginSection = document.querySelector("#login");
 const browserSection = document.querySelector("#browser");
@@ -27,9 +26,8 @@ document.querySelector("#logout").addEventListener("click", async () => {
 });
 
 document.querySelector("#close-player").addEventListener("click", () => {
-  playerSection.style.display = "none";
-  browserSection.hidden = false;
   document.querySelector("#game").replaceChildren();
+  browse(parentPath(pathFromLocation()));
 });
 
 async function start() {
@@ -38,17 +36,21 @@ async function start() {
     document.querySelector("#who").textContent = bootstrap.display_name;
     loginSection.hidden = true;
     browserSection.hidden = false;
-    await browse("");
+    await openLocation(false);
   } catch {
     loginSection.hidden = false;
     browserSection.hidden = true;
   }
 }
 
-async function browse(path) {
+async function browse(path, pushUrl = true) {
   clearError();
-  currentPath = path;
+  if (pushUrl) {
+    history.pushState(null, "", path ? `/${encodePath(path)}` : "/");
+  }
   const list = await api(path ? `/api/browse/${encodePath(path)}` : "/api/browse");
+  playerSection.style.display = "none";
+  browserSection.hidden = false;
   crumbs.replaceChildren();
   if (path) {
     const up = document.createElement("button");
@@ -74,8 +76,11 @@ async function browse(path) {
   }
 }
 
-async function play(path) {
+async function play(path, pushUrl = true) {
   clearError();
+  if (pushUrl) {
+    history.pushState(null, "", `/${encodePath(path)}`);
+  }
   const system = bootstrap.systems.find((candidate) => candidate.folder === path.split("/")[0]);
   if (!system) {
     showError(`Unknown system for ${path}`);
@@ -142,6 +147,26 @@ function parentPath(path) {
   return path.split("/").slice(0, -1).join("/");
 }
 
+function pathFromLocation() {
+  const path = location.pathname.replace(/^\/+/, "");
+  if (!path) return "";
+  return path.split("/").map(decodeURIComponent).join("/");
+}
+
+async function openLocation(pushUrl = false) {
+  const path = pathFromLocation();
+  if (path && isRomPath(path)) {
+    if (pushUrl) history.pushState(null, "", `/${encodePath(path)}`);
+    await play(path, false);
+  } else {
+    await browse(path, pushUrl);
+  }
+}
+
+function isRomPath(path) {
+  return /\.(nes|unif|sfc|smc|fig|swc|gb|gbc|gba|n64|z64|v64)$/i.test(path);
+}
+
 function clearError() {
   error.textContent = "";
 }
@@ -149,5 +174,9 @@ function clearError() {
 function showError(message) {
   error.textContent = message;
 }
+
+window.addEventListener("popstate", () => {
+  openLocation(false).catch((err) => showError(err.message));
+});
 
 start();
