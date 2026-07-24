@@ -1,0 +1,18 @@
+{
+  "roms_path": "./roms",
+  "saves_path": "./saves",
+  "state_path": "./state",
+  "port": 3000,
+  "default_options": {
+    "display_filter": "smooth",
+    "integer_scaling": false
+  },
+  "users": [
+    {
+      "username": "player1",
+      "display_name": "Player 1",
+      "password_hash_file": "./secrets/player1.hash",
+      "option_overrides": {}
+    }
+  ]
+}
