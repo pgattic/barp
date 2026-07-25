@@ -6,12 +6,14 @@ const core = dataset.core || params.get("core");
 const filter = dataset.filter || params.get("filter") || "smooth";
 const integerScaling =
   (dataset.integerScaling || params.get("integerScaling") || "0") === "1";
+const hasSave = (dataset.hasSave || params.get("hasSave") || "0") === "1";
 
 if (!path || !core) {
   document.body.textContent = "Missing emulator parameters.";
   throw new Error("Missing emulator parameters.");
 }
 
+// Server layout (ROADMAP): saves/<user>/<rom-path>.state1 and .srm
 const romUrl = `/api/roms/${encodePath(path)}`;
 const stateUrl = `/api/saves/${encodePath(`${path}.state1`)}`;
 const sramUrl = `/api/saves/${encodePath(`${path}.srm`)}`;
@@ -36,37 +38,101 @@ window.EJS_defaultOptions = {
   shader: filter === "pixelated" ? "nearest" : "default",
   screenRecords: false,
   "save-state-slot": 1,
+  // Flush battery saves often enough that a short session still persists.
+  "save-save-interval": 30,
 };
 window.EJS_integerScale = integerScaling;
-window.EJS_onSaveState = async (data) => {
-  await fetch(stateUrl, { method: "PUT", body: data });
+
+// Save-state button. Handler replaces EmulatorJS download/browser storage.
+// Payload is { screenshot, format, state } — only `state` is the bytes.
+window.EJS_onSaveState = async ({ state }) => {
+  await putBytes(stateUrl, state);
 };
-window.EJS_onSaveSRAM = async (data) => {
-  await fetch(sramUrl, { method: "PUT", body: data });
-};
+
+// Load-state button. Return value is ignored; we must inject the state ourselves.
 window.EJS_onLoadState = async () => {
-  const response = await fetch(stateUrl);
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(await response.text());
-  return new Uint8Array(await response.arrayBuffer());
+  const data = await getBytes(stateUrl);
+  if (data) {
+    window.EJS_emulator.gameManager.loadState(data);
+  }
 };
-window.EJS_onLoadSRAM = async () => {
-  const response = await fetch(sramUrl);
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(await response.text());
-  return new Uint8Array(await response.arrayBuffer());
+
+// Periodic / exit flush of battery RAM (and manual "Save SAV" button).
+window.EJS_onSaveSaveFiles = async (data) => {
+  await putBytes(sramUrl, data);
+};
+window.EJS_onSaveSave = async ({ save }) => {
+  await putBytes(sramUrl, save);
+};
+
+// Manual "Load SAV" button — inject into the core's expected FS path.
+window.EJS_onLoadSave = async () => {
+  await restoreSram();
+};
+
+// After the game is running, drop any existing battery save into the FS.
+window.EJS_onGameStart = async () => {
+  if (hasSave) {
+    await restoreSram();
+  }
 };
 
 const script = document.createElement("script");
 script.src = "/emulatorjs/data/loader.js";
 script.onerror = () => {
-  document.body.textContent = "EmulatorJS loader missing at /emulatorjs/data/loader.js";
+  document.body.textContent =
+    "EmulatorJS loader missing at /emulatorjs/data/loader.js";
 };
 document.body.append(script);
 
-function encodePath(path) {
-  return path
-    .split("/")
-    .map(encodeURIComponent)
-    .join("/");
+function encodePath(value) {
+  return value.split("/").map(encodeURIComponent).join("/");
+}
+
+async function putBytes(url, data) {
+  if (data == null) return;
+  const body = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (body.byteLength === 0) return;
+  const response = await fetch(url, { method: "PUT", body, keepalive: true });
+  if (!response.ok) {
+    console.error("save failed", url, response.status, await response.text());
+  }
+}
+
+async function getBytes(url) {
+  const response = await fetch(url);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(await response.text());
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength === 0) return null;
+  return new Uint8Array(buffer);
+}
+
+async function restoreSram() {
+  const data = await getBytes(sramUrl);
+  if (!data) return;
+
+  const gameManager = window.EJS_emulator?.gameManager;
+  const savePath = gameManager?.getSaveFilePath?.();
+  const fs = gameManager?.FS;
+  if (!savePath || !fs) return;
+
+  ensureParentDirectories(fs, savePath);
+  if (fs.analyzePath(savePath).exists) {
+    fs.unlink(savePath);
+  }
+  fs.writeFile(savePath, data);
+  gameManager.loadSaveFiles();
+}
+
+function ensureParentDirectories(fs, filePath) {
+  const parts = filePath.split("/");
+  let current = "";
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    if (!parts[i]) continue;
+    current += `/${parts[i]}`;
+    if (!fs.analyzePath(current).exists) {
+      fs.mkdir(current);
+    }
+  }
 }

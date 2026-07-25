@@ -539,12 +539,17 @@ async fn play_path_page(
 ) -> impl IntoResponse {
     match maybe_user(&state, &headers).await {
         Some(user) => match validate_play_path(&path) {
-            Ok(system) => Html(render_play_page(
-                &path,
-                system.core,
-                &effective_options(&user.options),
-            ))
-            .into_response(),
+            Ok(system) => {
+                let has_save =
+                    save_file_exists(&state, &user.username, &format!("{path}.srm")).await;
+                Html(render_play_page(
+                    &path,
+                    system.core,
+                    &effective_options(&user.options),
+                    has_save,
+                ))
+                .into_response()
+            }
             Err(err) => err.into_response(),
         },
         None => {
@@ -589,6 +594,9 @@ async fn put_save(
     let user = require_user(&state, &headers).await?;
     validate_system_path(&path)?;
     validate_save_path(&path)?;
+    if body.is_empty() {
+        return Err(AppError::BadRequest("refusing to write empty save".into()));
+    }
     let lock = save_lock(&state, &user.username).await;
     let _guard = lock.lock().await;
     let save_path = user_save_path(&state, &user.username, &path)?;
@@ -605,7 +613,7 @@ async fn put_save(
             .unwrap_or("save"),
         new_token()
     ));
-    fs::write(&tmp, body)
+    fs::write(&tmp, &body)
         .await
         .map_err(|err| AppError::Internal(err.to_string()))?;
     fs::rename(&tmp, &save_path)
@@ -796,7 +804,12 @@ async fn render_browse_page(
     ))
 }
 
-fn render_play_page(path: &str, core: &str, options: &EffectiveOptions) -> String {
+fn render_play_page(
+    path: &str,
+    core: &str,
+    options: &EffectiveOptions,
+    has_save: bool,
+) -> String {
     let filter = match options.display_filter {
         DisplayFilter::Pixelated => "pixelated",
         DisplayFilter::Smooth => "smooth",
@@ -815,7 +828,7 @@ fn render_play_page(path: &str, core: &str, options: &EffectiveOptions) -> Strin
       #game {{ width: 100vw; height: 100vh; }}
     </style>
   </head>
-  <body data-path="{path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}">
+  <body data-path="{path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}" data-has-save="{has_save}">
     <div id="game"></div>
     <script src="/player.js"></script>
   </body>
@@ -824,6 +837,7 @@ fn render_play_page(path: &str, core: &str, options: &EffectiveOptions) -> Strin
         core = escape_html(core),
         filter = escape_html(filter),
         integer_scaling = integer_scaling,
+        has_save = if has_save { "1" } else { "0" },
     )
 }
 
@@ -961,6 +975,16 @@ fn user_save_path(state: &AppState, username: &str, raw_path: &str) -> Result<Pa
     let mut base = (*state.saves_path).clone();
     base.push(username);
     join_checked(&base, raw_path)
+}
+
+async fn save_file_exists(state: &AppState, username: &str, raw_path: &str) -> bool {
+    match user_save_path(state, username, raw_path) {
+        Ok(path) => fs::metadata(path)
+            .await
+            .map(|metadata| metadata.is_file() && metadata.len() > 0)
+            .unwrap_or(false),
+        Err(_) => false,
+    }
 }
 
 async fn stream_file(path: PathBuf, headers: HeaderMap) -> Result<Response, AppError> {
