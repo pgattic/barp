@@ -22,7 +22,27 @@ type.
 
 The player still uses the first path segment to select the EmulatorJS core, so the selected ROM must live under a recognized top-level folder.
 
-Only recognized ROM extensions are shown by the browser.
+Barecade includes common folder aliases for every system exposed by the
+vendored EmulatorJS release, such as `nes`, `famicom`, `snes`, `genesis`,
+`megadrive`, `psx`, `playstation`, `arcade`, `c64`, and `dos`. Matching is
+case-insensitive. Files are filtered using the extensions supported by that
+system's EmulatorJS core rather than one global extension list.
+
+Additional aliases or concrete core selections can be declared in the config:
+
+```json
+"system_mappings": {
+  "my-ps1-games": "psx",
+  "accurate-ps1": "mednafen_psx_hw"
+}
+```
+
+The object maps a top-level ROM folder to either an EmulatorJS system name or
+a concrete core name from `frontend/emulatorjs/data/cores/cores.json`.
+Configured mappings override built-in aliases with the same folder name.
+
+Some systems require firmware that EmulatorJS cannot distribute. Recognizing
+those systems does not remove their upstream BIOS requirement.
 
 ## EmulatorJS Assets
 

@@ -8,7 +8,7 @@ use std::{
 use axum::{
     extract::{Path as AxumPath, State},
     http::{
-        header::{self, HeaderMap, HeaderValue},
+        header::{self, HeaderMap, HeaderName, HeaderValue},
         StatusCode,
     },
     response::{Html, IntoResponse, Redirect, Response},
@@ -26,7 +26,7 @@ use crate::{
     config::{effective_options, merge_options, Config, EffectiveOptions},
     pages::{content_href, render_browse_page, render_play_page},
     storage::{self, join_checked, save_file_exists, save_path_for_rom, validate_play_path},
-    systems::{systems, SystemInfo},
+    systems::SystemRegistry,
 };
 
 #[derive(RustEmbed)]
@@ -41,6 +41,7 @@ pub(crate) struct AppState {
     pub(crate) save_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     pub(crate) roms_path: Arc<PathBuf>,
     pub(crate) saves_path: Arc<PathBuf>,
+    pub(crate) systems: Arc<SystemRegistry>,
     _session_secret: Arc<Vec<u8>>,
 }
 
@@ -83,7 +84,6 @@ struct BootstrapResponse {
     username: String,
     display_name: String,
     options: EffectiveOptions,
-    systems: Vec<SystemInfo>,
 }
 
 pub(crate) fn router(state: AppState) -> Router {
@@ -123,6 +123,7 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
         .unwrap_or_else(|| config.saves_path.join(".barecade-state"));
     fs::create_dir_all(&state_path).await?;
     let session_secret = load_or_create_secret(&state_path).await?;
+    let systems = SystemRegistry::new(&config.system_mappings)?;
 
     let mut users = HashMap::new();
     for user in &config.users {
@@ -145,6 +146,7 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
         save_locks: Arc::new(Mutex::new(HashMap::new())),
         roms_path: Arc::new(roms_path),
         saves_path: Arc::new(saves_path),
+        systems: Arc::new(systems),
         _session_secret: Arc::new(session_secret),
     })
 }
@@ -194,7 +196,6 @@ async fn bootstrap(
         username: user.username.clone(),
         display_name: user.display_name.clone(),
         options: effective_options(&user.options),
-        systems: systems().to_vec(),
     }))
 }
 
@@ -227,18 +228,30 @@ async fn content_page(state: &AppState, headers: &HeaderMap, path: &str) -> Resp
         return AppError::NotFound.into_response();
     }
 
-    let system = match validate_play_path(path) {
+    let system = match validate_play_path(&state.systems, path) {
         Ok(system) => system,
         Err(err) => return err.into_response(),
     };
     let save_path = save_path_for_rom(path);
     let has_save = save_file_exists(state, &user.username, &format!("{save_path}.srm")).await;
-    Html(render_play_page(
+    let mut response = Html(render_play_page(
         path,
         &save_path,
-        system.core,
+        &system.core,
         &effective_options(&user.options),
         has_save,
+        system.threads,
     ))
-    .into_response()
+    .into_response();
+    if system.threads {
+        response.headers_mut().insert(
+            HeaderName::from_static("cross-origin-opener-policy"),
+            HeaderValue::from_static("same-origin"),
+        );
+        response.headers_mut().insert(
+            HeaderName::from_static("cross-origin-embedder-policy"),
+            HeaderValue::from_static("require-corp"),
+        );
+    }
+    response
 }

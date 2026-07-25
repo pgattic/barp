@@ -26,7 +26,7 @@ use tokio_util::io::ReaderStream;
 use crate::{
     app::{AppError, AppState},
     auth::{new_token, require_user},
-    systems::{is_rom_file, system_for_folder, SystemInfo},
+    systems::{System, SystemRegistry},
 };
 
 #[derive(Debug, Serialize)]
@@ -72,7 +72,12 @@ async fn browse_impl(
         }
         if file_type.is_dir() {
             out.push(BrowseEntry { name, kind: "dir" });
-        } else if file_type.is_file() && is_rom_file(&entry.path()) {
+        } else if file_type.is_file()
+            && state
+                .systems
+                .for_path(raw_path)
+                .is_some_and(|system| state.systems.supports_file(system, &entry.path()))
+        {
             out.push(BrowseEntry { name, kind: "file" });
         }
     }
@@ -90,9 +95,9 @@ pub(crate) async fn get_rom(
     AxumPath(path): AxumPath<String>,
 ) -> Result<Response, AppError> {
     require_user(&state, &headers).await?;
-    validate_system_path(&path)?;
+    let system = validate_system_path(&state.systems, &path)?;
     let rom_path = join_checked(&state.roms_path, &path)?;
-    if !is_rom_file(&rom_path) {
+    if !state.systems.supports_file(system, &rom_path) {
         return Err(AppError::BadRequest("unrecognized ROM extension".into()));
     }
     stream_file(rom_path, headers).await
@@ -104,7 +109,7 @@ pub(crate) async fn get_save(
     AxumPath(path): AxumPath<String>,
 ) -> Result<Response, AppError> {
     let user = require_user(&state, &headers).await?;
-    validate_system_path(&path)?;
+    validate_system_path(&state.systems, &path)?;
     validate_save_path(&path)?;
     let save_path = user_save_path(&state, &user.username, &path)?;
     stream_file(save_path, headers).await
@@ -117,7 +122,7 @@ pub(crate) async fn put_save(
     body: Bytes,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
     let user = require_user(&state, &headers).await?;
-    validate_system_path(&path)?;
+    validate_system_path(&state.systems, &path)?;
     validate_save_path(&path)?;
     if body.is_empty() {
         return Err(AppError::BadRequest("refusing to write empty save".into()));
@@ -149,17 +154,16 @@ async fn save_lock(state: &AppState, username: &str) -> Arc<Mutex<()>> {
         .clone()
 }
 
-pub(crate) fn validate_play_path(path: &str) -> Result<&'static SystemInfo, AppError> {
-    validate_system_path(path)?;
+pub(crate) fn validate_play_path<'a>(
+    registry: &'a SystemRegistry,
+    path: &str,
+) -> Result<&'a System, AppError> {
+    let system = validate_system_path(registry, path)?;
     let rom_path = join_checked(Path::new(""), path)?;
-    if !is_rom_file(&rom_path) {
+    if !registry.supports_file(system, &rom_path) {
         return Err(AppError::BadRequest("unrecognized ROM extension".into()));
     }
-    let first = sanitize_segments(path)?
-        .first()
-        .cloned()
-        .ok_or_else(|| AppError::BadRequest("missing system".into()))?;
-    system_for_folder(&first).ok_or(AppError::BadRequest("unknown system".into()))
+    Ok(system)
 }
 
 pub(crate) fn encode_path(path: &str) -> String {
@@ -169,16 +173,17 @@ pub(crate) fn encode_path(path: &str) -> String {
         .join("/")
 }
 
-pub(crate) fn validate_system_path(path: &str) -> Result<(), AppError> {
+pub(crate) fn validate_system_path<'a>(
+    registry: &'a SystemRegistry,
+    path: &str,
+) -> Result<&'a System, AppError> {
     let segments = sanitize_segments(path)?;
-    if let Some(first) = segments.first() {
-        if system_for_folder(first).is_none() {
-            return Err(AppError::BadRequest(format!(
-                "unrecognized system folder: {first}"
-            )));
-        }
-    }
-    Ok(())
+    let first = segments
+        .first()
+        .ok_or_else(|| AppError::BadRequest("missing system".into()))?;
+    registry
+        .for_folder(first)
+        .ok_or_else(|| AppError::BadRequest(format!("unrecognized system folder: {first}")))
 }
 
 pub(crate) fn join_checked(base: &Path, raw_path: &str) -> Result<PathBuf, AppError> {
@@ -319,6 +324,8 @@ pub(crate) fn save_path_for_rom(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     #[test]
@@ -339,8 +346,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_system_folder() {
-        assert!(validate_system_path("genesis/sonic.bin").is_err());
-        assert!(validate_system_path("gba/metroid.gba").is_ok());
+        let registry = SystemRegistry::new(&HashMap::new()).unwrap();
+        assert!(validate_system_path(&registry, "unknown/sonic.bin").is_err());
+        assert!(validate_system_path(&registry, "genesis/sonic.bin").is_ok());
     }
 
     #[test]

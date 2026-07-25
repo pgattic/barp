@@ -8,6 +8,7 @@ const filter = dataset.filter || params.get("filter") || "smooth";
 const integerScaling =
   (dataset.integerScaling || params.get("integerScaling") || "0") === "1";
 const hasSave = (dataset.hasSave || params.get("hasSave") || "0") === "1";
+const threads = (dataset.threads || params.get("threads") || "0") === "1";
 
 if (!path || !savePath || !core) {
   document.body.textContent = "Missing emulator parameters.";
@@ -30,7 +31,7 @@ window.EJS_pathtodata = "/emulatorjs/data/";
 // permission/gesture and often sticks on a gray screen until a click.
 window.EJS_startOnLoaded = navigationType() === "navigate";
 window.EJS_disableDatabases = true;
-window.EJS_threads = false;
+window.EJS_threads = threads;
 window.EJS_Buttons = {
   playPause: true,
   restart: true,

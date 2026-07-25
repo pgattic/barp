@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,8 @@ pub(crate) struct Config {
     pub(crate) default_options: Options,
     #[serde(default)]
     pub(crate) users: Vec<UserConfig>,
+    #[serde(default)]
+    pub(crate) system_mappings: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

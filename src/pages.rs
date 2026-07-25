@@ -7,7 +7,6 @@ use crate::{
     auth::User,
     config::{DisplayFilter, EffectiveOptions},
     storage::{encode_path, join_checked},
-    systems::is_rom_file,
 };
 
 #[derive(Debug)]
@@ -41,7 +40,12 @@ pub(crate) async fn render_browse_page(
                 label: format!("{name}/"),
                 is_dir: true,
             });
-        } else if file_type.is_file() && is_rom_file(&entry.path()) {
+        } else if file_type.is_file()
+            && state
+                .systems
+                .for_path(raw_path)
+                .is_some_and(|system| state.systems.supports_file(system, &entry.path()))
+        {
             out.push(BrowseLink {
                 href: content_href(&join_path(raw_path, &name)),
                 label: name,
@@ -107,6 +111,7 @@ pub(crate) fn render_play_page(
     core: &str,
     options: &EffectiveOptions,
     has_save: bool,
+    threads: bool,
 ) -> String {
     let filter = match options.display_filter {
         DisplayFilter::Pixelated => "pixelated",
@@ -126,7 +131,7 @@ pub(crate) fn render_play_page(
       #game {{ width: 100vw; height: 100vh; }}
     </style>
   </head>
-  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}" data-has-save="{has_save}">
+  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}" data-has-save="{has_save}" data-threads="{threads}">
     <div id="game"></div>
     <script src="/player.js"></script>
   </body>
@@ -137,6 +142,7 @@ pub(crate) fn render_play_page(
         filter = escape_html(filter),
         integer_scaling = integer_scaling,
         has_save = if has_save { "1" } else { "0" },
+        threads = if threads { "1" } else { "0" },
     )
 }
 
