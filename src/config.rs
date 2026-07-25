@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct Config {
     pub(crate) roms_path: PathBuf,
     pub(crate) saves_path: PathBuf,
+    /// Path to an EmulatorJS `data/` directory (contains `loader.js`).
+    pub(crate) emulatorjs_path: PathBuf,
     #[serde(default)]
     pub(crate) state_path: Option<PathBuf>,
     #[serde(default = "default_port")]

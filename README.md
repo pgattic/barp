@@ -38,7 +38,7 @@ Additional aliases or concrete core selections can be declared in the config:
 ```
 
 The object maps a top-level ROM folder to either an EmulatorJS system name or
-a concrete core name from `frontend/emulatorjs/data/cores/cores.json`.
+a concrete core name from `$emulatorjs_path/cores/cores.json`.
 Configured mappings override built-in aliases with the same folder name.
 
 Some systems require firmware that EmulatorJS cannot distribute. Recognizing
@@ -67,10 +67,19 @@ those systems does not remove their upstream BIOS requirement.
 
 ## EmulatorJS Assets
 
-The embedded frontend expects EmulatorJS's runtime assets under `frontend/emulatorjs/data/`, served as `/emulatorjs/data/`.
+`emulatorjs_path` must point at an EmulatorJS `data/` directory (the folder
+that contains `loader.js`). BARP serves that tree at `/emulatorjs/data/`.
 
-Vendor the pinned upstream release with:
+For local development, vendor the pinned upstream release and point config at
+the resulting path:
 
 ```sh
 nix develop --builders '' --command scripts/vendor-emulatorjs.sh
 ```
+
+```json
+"emulatorjs_path": "./frontend/emulatorjs/data"
+```
+
+On NixOS, point `emulatorjs_path` at a store path from a release `fetchzip`
+(or equivalent) instead of embedding EmulatorJS into the BARP binary.

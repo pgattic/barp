@@ -40,10 +40,17 @@ struct BuiltinSystem {
 
 impl SystemRegistry {
     pub(crate) fn new(
+        emulatorjs_path: &Path,
         additional_mappings: &HashMap<String, String>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let cores: Vec<CoreMetadata> =
-            serde_json::from_str(include_str!("../frontend/emulatorjs/data/cores/cores.json"))?;
+        let cores_path = emulatorjs_path.join("cores/cores.json");
+        let cores_text = std::fs::read_to_string(&cores_path).map_err(|err| {
+            format!(
+                "failed to read EmulatorJS cores metadata at {}: {err}",
+                cores_path.display()
+            )
+        })?;
+        let cores: Vec<CoreMetadata> = serde_json::from_str(&cores_text)?;
         let mut concrete = HashMap::new();
         for core in cores {
             concrete.insert(
@@ -392,11 +399,17 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
+
+    fn test_emulatorjs_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/emulatorjs/data")
+    }
 
     #[test]
     fn resolves_common_aliases_case_insensitively() {
-        let registry = SystemRegistry::new(&HashMap::new()).unwrap();
+        let registry = SystemRegistry::new(&test_emulatorjs_path(), &HashMap::new()).unwrap();
         assert_eq!(registry.for_folder("NES").unwrap().core, "nes");
         assert_eq!(registry.for_folder("megadrive").unwrap().core, "segaMD");
         assert_eq!(registry.for_folder("playstation").unwrap().core, "psx");
@@ -405,12 +418,13 @@ mod tests {
 
     #[test]
     fn supports_every_vendored_core_as_a_config_target() {
-        let cores: Vec<CoreMetadata> =
-            serde_json::from_str(include_str!("../frontend/emulatorjs/data/cores/cores.json"))
-                .unwrap();
+        let emulatorjs_path = test_emulatorjs_path();
+        let cores_text =
+            std::fs::read_to_string(emulatorjs_path.join("cores/cores.json")).unwrap();
+        let cores: Vec<CoreMetadata> = serde_json::from_str(&cores_text).unwrap();
         for core in cores {
             let mappings = HashMap::from([("test".to_string(), core.name.clone())]);
-            let registry = SystemRegistry::new(&mappings).unwrap();
+            let registry = SystemRegistry::new(&emulatorjs_path, &mappings).unwrap();
             assert_eq!(registry.for_folder("test").unwrap().core, core.name);
         }
     }
@@ -421,7 +435,7 @@ mod tests {
             ("my-ps1".to_string(), "psx".to_string()),
             ("accurate-ps1".to_string(), "mednafen_psx_hw".to_string()),
         ]);
-        let registry = SystemRegistry::new(&mappings).unwrap();
+        let registry = SystemRegistry::new(&test_emulatorjs_path(), &mappings).unwrap();
         assert_eq!(registry.for_folder("my-ps1").unwrap().core, "psx");
         assert_eq!(
             registry.for_folder("accurate-ps1").unwrap().core,
@@ -431,7 +445,7 @@ mod tests {
 
     #[test]
     fn uses_extensions_for_the_selected_system() {
-        let registry = SystemRegistry::new(&HashMap::new()).unwrap();
+        let registry = SystemRegistry::new(&test_emulatorjs_path(), &HashMap::new()).unwrap();
         let nes = registry.for_folder("nes").unwrap();
         assert!(registry.supports_file(nes, Path::new("game.nes")));
         assert!(!registry.supports_file(nes, Path::new("game.gba")));
@@ -439,7 +453,7 @@ mod tests {
 
     #[test]
     fn carries_thread_requirements_from_core_metadata() {
-        let registry = SystemRegistry::new(&HashMap::new()).unwrap();
+        let registry = SystemRegistry::new(&test_emulatorjs_path(), &HashMap::new()).unwrap();
         assert!(registry.for_folder("psp").unwrap().threads);
         assert!(registry.for_folder("dos").unwrap().threads);
         assert!(!registry.for_folder("nes").unwrap().threads);

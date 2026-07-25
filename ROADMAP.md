@@ -44,7 +44,7 @@ BARP = Boring Ahh ROM Player.
 - [ ] On first page load, if no local settings key exists, seed localStorage from `/api/bootstrap`; after that, localStorage is authoritative and the UI never calls back to the server for settings
 - [ ] Custom trimmed settings panel (few options) using `EJS_Buttons` to hide EmulatorJS's default menu items
 - [ ] EmulatorJS save state calls wired to `/api/saves/...`
-- [ ] Build → embed via rust-embed
+- [ ] Build → embed BARP frontend via rust-embed; serve EmulatorJS from `emulatorjs_path`
 
 ## Phase 6 — Input
 - [ ] Confirm touch controls work on mobile viewport

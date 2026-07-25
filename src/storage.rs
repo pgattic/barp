@@ -240,7 +240,7 @@ pub(crate) async fn save_file_exists(state: &AppState, username: &str, raw_path:
     }
 }
 
-async fn stream_file(path: PathBuf, headers: HeaderMap) -> Result<Response, AppError> {
+pub(crate) async fn stream_file(path: PathBuf, headers: HeaderMap) -> Result<Response, AppError> {
     let metadata = fs::metadata(&path).await.map_err(|err| match err.kind() {
         io::ErrorKind::NotFound => AppError::NotFound,
         _ => err.into(),
@@ -346,7 +346,9 @@ mod tests {
 
     #[test]
     fn rejects_unknown_system_folder() {
-        let registry = SystemRegistry::new(&HashMap::new()).unwrap();
+        let emulatorjs_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/emulatorjs/data");
+        let registry = SystemRegistry::new(&emulatorjs_path, &HashMap::new()).unwrap();
         assert!(validate_system_path(&registry, "unknown/sonic.bin").is_err());
         assert!(validate_system_path(&registry, "genesis/sonic.bin").is_ok());
     }

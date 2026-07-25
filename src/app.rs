@@ -31,6 +31,7 @@ use crate::{
 
 #[derive(RustEmbed)]
 #[folder = "frontend/"]
+#[exclude = "emulatorjs/*"]
 struct Assets;
 
 #[derive(Clone)]
@@ -41,6 +42,7 @@ pub(crate) struct AppState {
     pub(crate) save_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     pub(crate) roms_path: Arc<PathBuf>,
     pub(crate) saves_path: Arc<PathBuf>,
+    pub(crate) emulatorjs_path: Arc<PathBuf>,
     pub(crate) systems: Arc<SystemRegistry>,
     _session_secret: Arc<Vec<u8>>,
 }
@@ -102,6 +104,7 @@ pub(crate) fn router(state: AppState) -> Router {
             "/api/saves/*path",
             get(storage::get_save).put(storage::put_save),
         )
+        .route("/emulatorjs/data/*path", get(serve_emulatorjs))
         .route("/*path", get(content_or_asset))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -117,13 +120,14 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
     }
     fs::create_dir_all(&config.saves_path).await?;
     let saves_path = config.saves_path.canonicalize()?;
+    let emulatorjs_path = validate_emulatorjs_path(&config.emulatorjs_path)?;
     let state_path = config
         .state_path
         .clone()
         .unwrap_or_else(|| config.saves_path.join(".barp-state"));
     fs::create_dir_all(&state_path).await?;
     let session_secret = load_or_create_secret(&state_path).await?;
-    let systems = SystemRegistry::new(&config.system_mappings)?;
+    let systems = SystemRegistry::new(&emulatorjs_path, &config.system_mappings)?;
 
     let mut users = HashMap::new();
     for (username, user) in &config.users {
@@ -146,9 +150,50 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
         save_locks: Arc::new(Mutex::new(HashMap::new())),
         roms_path: Arc::new(roms_path),
         saves_path: Arc::new(saves_path),
+        emulatorjs_path: Arc::new(emulatorjs_path),
         systems: Arc::new(systems),
         _session_secret: Arc::new(session_secret),
     })
+}
+
+fn validate_emulatorjs_path(path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let emulatorjs_path = path.canonicalize().map_err(|err| {
+        format!(
+            "emulatorjs_path could not be resolved ({}): {err}",
+            path.display()
+        )
+    })?;
+    if !emulatorjs_path.is_dir() {
+        return Err(format!(
+            "emulatorjs_path is not a directory: {}",
+            emulatorjs_path.display()
+        )
+        .into());
+    }
+    if !emulatorjs_path.join("loader.js").is_file() {
+        return Err(format!(
+            "emulatorjs_path is missing loader.js: {}",
+            emulatorjs_path.display()
+        )
+        .into());
+    }
+    if !emulatorjs_path.join("cores/cores.json").is_file() {
+        return Err(format!(
+            "emulatorjs_path is missing cores/cores.json: {}",
+            emulatorjs_path.display()
+        )
+        .into());
+    }
+    Ok(emulatorjs_path)
+}
+
+async fn serve_emulatorjs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(path): AxumPath<String>,
+) -> Result<Response, AppError> {
+    let file = join_checked(&state.emulatorjs_path, &path)?;
+    storage::stream_file(file, headers).await
 }
 
 async fn load_or_create_secret(state_path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {

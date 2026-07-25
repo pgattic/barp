@@ -1,6 +1,7 @@
 {
   "roms_path": "./roms",
   "saves_path": "./saves",
+  "emulatorjs_path": "./frontend/emulatorjs/data",
   "state_path": "./state",
   "port": 3000,
   "default_options": {
