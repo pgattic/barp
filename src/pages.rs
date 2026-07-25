@@ -76,12 +76,62 @@ pub(crate) async fn render_browse_page(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Barecade</title>
     <style>
-      body {{ font-family: sans-serif; margin: 1rem; }}
-      .toolbar {{ display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }}
-      .row a {{ display: block; padding: .25rem 0; }}
-      .path {{ color: #444; }}
+      :root {{
+        color-scheme: light dark;
+        --background: light-dark(#f5f6f8, #111315);
+        --surface: light-dark(#ffffff, #1b1e21);
+        --border: light-dark(#d8dce2, #34383d);
+        --text: light-dark(#20242a, #e7e9ec);
+        --muted: light-dark(#626a75, #a8afb8);
+        --accent: light-dark(#245fbd, #78aaf7);
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        background: var(--background);
+        color: var(--text);
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+      }}
+      main {{ width: min(48rem, calc(100% - 2rem)); margin: 2rem auto; }}
+      h1 {{ margin: 2rem 0 .25rem; font-size: 1.75rem; }}
+      .toolbar {{
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border);
+      }}
+      .toolbar strong {{ font-size: 1.15rem; }}
+      .toolbar span {{ color: var(--muted); }}
+      .toolbar form {{ margin-left: auto; }}
+      button, input {{
+        border: 1px solid var(--border);
+        border-radius: .4rem;
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+      }}
+      button {{ padding: .4rem .75rem; cursor: pointer; }}
+      button:hover {{ border-color: var(--accent); }}
+      section {{
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: .4rem;
+        background: var(--surface);
+      }}
+      .row a {{
+        display: block;
+        padding: .4rem .7rem;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+        text-decoration: none;
+      }}
+      .row:last-child a {{ border-bottom: 0; }}
+      .row a:hover {{ background: var(--background); color: var(--accent); }}
+      .path {{ margin: 0 0 1.25rem; color: var(--muted); }}
       .path a {{ color: inherit; text-decoration: none; }}
-      .path a:hover {{ text-decoration: underline; }}
+      .path a:hover {{ color: var(--accent); text-decoration: underline; }}
     </style>
   </head>
   <body>
@@ -161,9 +211,48 @@ pub(crate) fn render_login_page(next: &str, error: Option<&str>) -> String {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Barecade - Login</title>
     <style>
-      body {{ font-family: sans-serif; margin: 1rem; }}
-      label {{ display: block; margin: 0.5rem 0; }}
-      .error {{ color: #b00020; }}
+      :root {{
+        color-scheme: light dark;
+        --background: light-dark(#f5f6f8, #111315);
+        --surface: light-dark(#ffffff, #1b1e21);
+        --border: light-dark(#d8dce2, #34383d);
+        --text: light-dark(#20242a, #e7e9ec);
+        --muted: light-dark(#626a75, #a8afb8);
+        --accent: light-dark(#245fbd, #78aaf7);
+        --error: light-dark(#b42318, #ff8a80);
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: center;
+        background: var(--background);
+        color: var(--text);
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+      }}
+      main {{ width: min(24rem, calc(100% - 2rem)); }}
+      h1 {{ margin-top: 0; text-align: center; }}
+      form {{
+        padding: 1.25rem;
+        border: 1px solid var(--border);
+        border-radius: .6rem;
+        background: var(--surface);
+      }}
+      label {{ display: grid; gap: .25rem; margin-bottom: 1rem; color: var(--muted); }}
+      input, button {{
+        width: 100%;
+        padding: .6rem .7rem;
+        border: 1px solid var(--border);
+        border-radius: .4rem;
+        background: var(--background);
+        color: var(--text);
+        font: inherit;
+      }}
+      input:focus {{ border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px; }}
+      button {{ background: var(--accent); color: light-dark(#ffffff, #101214); cursor: pointer; font-weight: 600; }}
+      .error {{ color: var(--error); }}
     </style>
   </head>
   <body>
