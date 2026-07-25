@@ -31,7 +31,7 @@ Rust (axum) backend, EmulatorJS frontend, flat-file storage, NixOS module deploy
 - [ ] Loud error on unrecognized first segment (no silent fallback)
 
 ## Phase 4 — Saves (flat-file only)
-- [ ] Layout: `saves/<username>/*path` mirrors `roms/*path` 1:1, with save extension appended (`.srm`, `.stateN`)
+- [ ] Layout: `saves/<username>/*path` mirrors the ROM path with the ROM extension replaced by `.srm` or `.stateN`
 - [ ] Atomic write (tmp + rename), per-user lock
 - [ ] `GET/PUT /api/saves/*path`
 - [ ] No per-user config.json — settings are NOT stored server-side (see Phase 5)

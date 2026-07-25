@@ -2,21 +2,25 @@ const params = new URLSearchParams(location.search);
 const dataset = document.body.dataset;
 
 const path = dataset.path || params.get("path");
+const savePath = dataset.savePath || params.get("savePath");
 const core = dataset.core || params.get("core");
 const filter = dataset.filter || params.get("filter") || "smooth";
 const integerScaling =
   (dataset.integerScaling || params.get("integerScaling") || "0") === "1";
 const hasSave = (dataset.hasSave || params.get("hasSave") || "0") === "1";
 
-if (!path || !core) {
+if (!path || !savePath || !core) {
   document.body.textContent = "Missing emulator parameters.";
   throw new Error("Missing emulator parameters.");
 }
 
-// Server layout (ROADMAP): saves/<user>/<rom-path>.state1 and .srm
+// Server layout: saves/<user>/<system>/<ROM basename>.state1 and .srm
 const romUrl = `/api/roms/${encodePath(path)}`;
-const stateUrl = `/api/saves/${encodePath(`${path}.state1`)}`;
-const sramUrl = `/api/saves/${encodePath(`${path}.srm`)}`;
+const stateUrl = `/api/saves/${encodePath(`${savePath}.state1`)}`;
+const sramUrl = `/api/saves/${encodePath(`${savePath}.srm`)}`;
+const browseUrl = browseUrlFor(path);
+let lastSramWrite = Promise.resolve();
+let exiting = false;
 
 window.EJS_player = "#game";
 window.EJS_gameUrl = romUrl;
@@ -59,10 +63,10 @@ window.EJS_onLoadState = async () => {
 
 // Periodic / exit flush of battery RAM (and manual "Save SAV" button).
 window.EJS_onSaveSaveFiles = async (data) => {
-  await putBytes(sramUrl, data);
+  await queueSramWrite(data);
 };
 window.EJS_onSaveSave = async ({ save }) => {
-  await putBytes(sramUrl, save);
+  await queueSramWrite(save);
 };
 
 // Manual "Load SAV" button — inject into the core's expected FS path.
@@ -77,6 +81,12 @@ window.EJS_onGameStart = async () => {
   }
 };
 
+// Register before GameManager adds its own exit cleanup. This lets us flush
+// and copy SRAM bytes before EmulatorJS unmounts its virtual filesystem.
+window.EJS_ready = () => {
+  window.EJS_emulator.on("exit", exitToBrowser);
+};
+
 const script = document.createElement("script");
 script.src = "/emulatorjs/data/loader.js";
 script.onerror = () => {
@@ -89,14 +99,48 @@ function encodePath(value) {
   return value.split("/").map(encodeURIComponent).join("/");
 }
 
+function browseUrlFor(romPath) {
+  const parent = romPath.split("/").slice(0, -1).join("/");
+  return parent ? `/browse/${encodePath(parent)}` : "/browse/";
+}
+
 async function putBytes(url, data) {
   if (data == null) return;
   const body = data instanceof Uint8Array ? data : new Uint8Array(data);
   if (body.byteLength === 0) return;
   const response = await fetch(url, { method: "PUT", body, keepalive: true });
   if (!response.ok) {
-    console.error("save failed", url, response.status, await response.text());
+    throw new Error(`Save failed (${response.status}): ${await response.text()}`);
   }
+}
+
+function queueSramWrite(data) {
+  if (data == null) return lastSramWrite;
+  lastSramWrite = lastSramWrite
+    .catch(() => {})
+    .then(() => putBytes(sramUrl, data));
+  return lastSramWrite;
+}
+
+function exitToBrowser() {
+  if (exiting) return;
+  exiting = true;
+
+  try {
+    // Flush the core's current battery save into its virtual save file.
+    // This synchronously fires EJS_onSaveSaveFiles, which queues the PUT.
+    window.EJS_emulator.gameManager.getSaveFile();
+  } catch (error) {
+    console.error("Could not flush save data on exit", error);
+  }
+
+  lastSramWrite
+    .then(() => location.assign(browseUrl))
+    .catch((error) => {
+      exiting = false;
+      console.error(error);
+      alert("Could not store save data. Please try exiting again.");
+    });
 }
 
 async function getBytes(url) {

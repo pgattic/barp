@@ -540,10 +540,12 @@ async fn play_path_page(
     match maybe_user(&state, &headers).await {
         Some(user) => match validate_play_path(&path) {
             Ok(system) => {
+                let save_path = save_path_for_rom(&path);
                 let has_save =
-                    save_file_exists(&state, &user.username, &format!("{path}.srm")).await;
+                    save_file_exists(&state, &user.username, &format!("{save_path}.srm")).await;
                 Html(render_play_page(
                     &path,
+                    &save_path,
                     system.core,
                     &effective_options(&user.options),
                     has_save,
@@ -806,6 +808,7 @@ async fn render_browse_page(
 
 fn render_play_page(
     path: &str,
+    save_path: &str,
     core: &str,
     options: &EffectiveOptions,
     has_save: bool,
@@ -828,12 +831,13 @@ fn render_play_page(
       #game {{ width: 100vw; height: 100vh; }}
     </style>
   </head>
-  <body data-path="{path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}" data-has-save="{has_save}">
+  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}" data-has-save="{has_save}">
     <div id="game"></div>
     <script src="/player.js"></script>
   </body>
 </html>"#,
         path = escape_html(path),
+        save_path = escape_html(save_path),
         core = escape_html(core),
         filter = escape_html(filter),
         integer_scaling = integer_scaling,
@@ -1141,6 +1145,13 @@ fn is_rom_file(path: &Path) -> bool {
     )
 }
 
+fn save_path_for_rom(path: &str) -> String {
+    Path::new(path)
+        .with_extension("")
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn default_port() -> u16 {
     3000
 }
@@ -1171,6 +1182,18 @@ mod tests {
         assert!(is_rom_file(Path::new("game.SFC")));
         assert!(is_rom_file(Path::new("game.z64")));
         assert!(!is_rom_file(Path::new("readme.txt")));
+    }
+
+    #[test]
+    fn save_path_replaces_the_rom_extension() {
+        assert_eq!(
+            save_path_for_rom("nes/Super Mario Bros.nes"),
+            "nes/Super Mario Bros"
+        );
+        assert_eq!(
+            save_path_for_rom("snes/Game (Rev 1).en.sfc"),
+            "snes/Game (Rev 1).en"
+        );
     }
 
     #[test]
