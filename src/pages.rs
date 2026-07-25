@@ -74,7 +74,7 @@ pub(crate) async fn render_browse_page(
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Barecade</title>
+    <title>BARP</title>
     <style>
       :root {{
         color-scheme: light dark;
@@ -137,7 +137,7 @@ pub(crate) async fn render_browse_page(
   <body>
     <main>
       <div class="toolbar">
-        <strong>Barecade</strong>
+        <strong>BARP</strong>
         <span>{user}</span>
         <form method="post" action="/logout">
           <button type="submit">Log out</button>
@@ -171,7 +171,7 @@ pub(crate) fn render_play_page(
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Barecade - {path}</title>
+    <title>BARP - {path}</title>
     <style>
       html, body {{ width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }}
       #game {{ width: 100vw; height: 100vh; }}
@@ -209,7 +209,7 @@ pub(crate) fn render_login_page(next: &str, error: Option<&str>) -> String {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Barecade - Login</title>
+    <title>BARP - Login</title>
     <style>
       :root {{
         color-scheme: light dark;
@@ -257,7 +257,7 @@ pub(crate) fn render_login_page(next: &str, error: Option<&str>) -> String {
   </head>
   <body>
     <main>
-      <h1>Barecade</h1>
+      <h1>BARP</h1>
       {error_html}
       <form method="post" action="/login">
         <input type="hidden" name="next" value="{next}">

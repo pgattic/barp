@@ -108,7 +108,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "barecade"
+name = "barp"
 version = "0.1.0"
 dependencies = [
  "argon2",

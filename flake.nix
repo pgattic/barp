@@ -1,5 +1,5 @@
 {
-  description = "Barecade";
+  description = "BARP — Boring Ahh ROM Player";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -26,7 +26,7 @@
 
       packages = forAllSystems (pkgs: {
         default = pkgs.rustPlatform.buildRustPackage {
-          pname = "barecade";
+          pname = "barp";
           version = "0.1.0";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;

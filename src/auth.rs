@@ -18,7 +18,7 @@ use crate::{
     pages::{content_href, render_login_page},
 };
 
-const SESSION_COOKIE: &str = "barecade_session";
+const SESSION_COOKIE: &str = "barp_session";
 
 #[derive(Clone)]
 pub(crate) struct User {
@@ -180,7 +180,7 @@ async fn remove_session(state: &AppState, headers: &HeaderMap) {
 }
 
 fn expired_cookie() -> HeaderValue {
-    HeaderValue::from_static("barecade_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/")
+    HeaderValue::from_static("barp_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/")
 }
 
 fn session_redirect_response(token: &str, next: &str) -> impl IntoResponse {

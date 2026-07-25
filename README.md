@@ -1,6 +1,6 @@
-# Barecade
+# BARP
 
-Barecade is a small Axum service for browsing a ROM directory and launching games through EmulatorJS. It stores saves as flat files under each authenticated user.
+**BARP** (Boring Ahh ROM Player) is a small Axum service for browsing a ROM directory and launching games through EmulatorJS. It stores saves as flat files under each authenticated user.
 
 ## Development
 
@@ -22,7 +22,7 @@ type.
 
 The player still uses the first path segment to select the EmulatorJS core, so the selected ROM must live under a recognized top-level folder.
 
-Barecade includes common folder aliases for every system exposed by the
+BARP includes common folder aliases for every system exposed by the
 vendored EmulatorJS release, such as `nes`, `famicom`, `snes`, `genesis`,
 `megadrive`, `psx`, `playstation`, `arcade`, `c64`, and `dos`. Matching is
 case-insensitive. Files are filtered using the extensions supported by that
@@ -63,7 +63,7 @@ those systems does not remove their upstream BIOS requirement.
   off; this option affects how the page scales that bitmap.
 - `integer_scale` sizes the canvas to an integer multiple of the core's
   native resolution. EmulatorJS 4.2.3 has no built-in integer-scale setting,
-  so Barecade applies this itself.
+  so BARP applies this itself.
 
 ## EmulatorJS Assets
 

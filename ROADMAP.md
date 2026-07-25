@@ -1,11 +1,13 @@
-# Barecade Roadmap
+# BARP Roadmap
 
 Rust (axum) backend, EmulatorJS frontend, flat-file storage, NixOS module deployment.
+
+BARP = Boring Ahh ROM Player.
 
 ---
 
 ## Phase 0 — Setup
-- [ ] `cargo new barecade`, add deps: axum, tokio, serde/serde_json, argon2, tower-http, rust-embed
+- [ ] `cargo new barp`, add deps: axum, tokio, serde/serde_json, argon2, tower-http, rust-embed
 - [ ] flake.nix dev shell
 
 ## Phase 1 — Backend skeleton
@@ -58,7 +60,7 @@ Rust (axum) backend, EmulatorJS frontend, flat-file storage, NixOS module deploy
 
 ## Phase 8 — NixOS module
 - [ ] Package via crane/naersk
-- [ ] `services.barecade`: `enable`, `romsPath`, `savesPath`, `port`, `defaultOptions`, `users.<name>.{passwordHashFile, displayName, optionOverrides}`
+- [ ] `services.barp`: `enable`, `romsPath`, `savesPath`, `port`, `defaultOptions`, `users.<name>.{passwordHashFile, displayName, optionOverrides}`
 - [ ] Generate config JSON from module options
 - [ ] systemd unit with Phase 7 sandboxing
 - [ ] Document mkpasswd + agenix workflow

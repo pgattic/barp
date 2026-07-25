@@ -120,7 +120,7 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
     let state_path = config
         .state_path
         .clone()
-        .unwrap_or_else(|| config.saves_path.join(".barecade-state"));
+        .unwrap_or_else(|| config.saves_path.join(".barp-state"));
     fs::create_dir_all(&state_path).await?;
     let session_secret = load_or_create_secret(&state_path).await?;
     let systems = SystemRegistry::new(&config.system_mappings)?;
