@@ -61,8 +61,9 @@ pub(crate) async fn render_browse_page(
 
     let mut rows = String::new();
     for entry in out {
+        let class = if entry.is_dir { "row dir" } else { "row" };
         rows.push_str(&format!(
-            "<div class=\"row\"><a href=\"{}\">{}</a></div>",
+            "<div class=\"{class}\"><a href=\"{}\">{}</a></div>",
             escape_html(&entry.href),
             escape_html(&entry.label)
         ));

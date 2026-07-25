@@ -419,8 +419,7 @@ mod tests {
     #[test]
     fn supports_every_fixture_core_as_a_config_target() {
         let emulatorjs_path = test_emulatorjs_path();
-        let cores_text =
-            std::fs::read_to_string(emulatorjs_path.join("cores/cores.json")).unwrap();
+        let cores_text = std::fs::read_to_string(emulatorjs_path.join("cores/cores.json")).unwrap();
         let cores: Vec<CoreMetadata> = serde_json::from_str(&cores_text).unwrap();
         for core in cores {
             let mappings = HashMap::from([("test".to_string(), core.name.clone())]);
