@@ -235,11 +235,7 @@ fn router(state: AppState) -> Router {
         .route("/api/browse/*path", get(browse_path))
         .route("/api/roms/*path", get(get_rom))
         .route("/api/saves/*path", get(get_save).put(put_save))
-        .route("/browse", get(browse_root_page))
-        .route("/browse/", get(browse_root_page))
-        .route("/browse/*path", get(browse_path_page))
-        .route("/play/*path", get(play_path_page))
-        .fallback(static_asset)
+        .route("/*path", get(content_or_asset))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -327,15 +323,12 @@ fn merge_options(defaults: &Options, overrides: &Options) -> Options {
 }
 
 async fn index(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    match maybe_user(&state, &headers).await {
-        Some(_) => Redirect::to("/browse/").into_response(),
-        None => Redirect::to("/login?next=%2Fbrowse%2F").into_response(),
-    }
+    content_page(&state, &headers, "").await
 }
 
 async fn login_page(Query(query): Query<NextQuery>) -> Html<String> {
     Html(render_login_page(
-        query.next.as_deref().unwrap_or("/browse/"),
+        query.next.as_deref().unwrap_or("/"),
         None,
     ))
 }
@@ -378,11 +371,14 @@ async fn logout_form(State(state): State<AppState>, headers: HeaderMap) -> impl 
     (response_headers, Redirect::to("/login")).into_response()
 }
 
-async fn static_asset(uri: axum::http::Uri) -> impl IntoResponse {
-    let path = uri.path().trim_start_matches('/');
-    match Assets::get(path) {
-        Some(asset) => asset_response(path, asset),
-        None => AppError::NotFound.into_response(),
+async fn content_or_asset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(path): AxumPath<String>,
+) -> Response {
+    match Assets::get(&path) {
+        Some(asset) => asset_response(&path, asset),
+        None => content_page(&state, &headers, &path).await,
     }
 }
 
@@ -505,60 +501,49 @@ async fn browse_impl(
     Ok(Json(out))
 }
 
-async fn browse_root_page(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    match maybe_user(&state, &headers).await {
-        Some(user) => match render_browse_page(&state, &user, "").await {
+async fn content_page(state: &AppState, headers: &HeaderMap, path: &str) -> Response {
+    let Some(user) = maybe_user(state, headers).await else {
+        let next = content_href(path);
+        return Redirect::to(&format!("/login?next={}", urlencoding::encode(&next)))
+            .into_response();
+    };
+
+    let target = match join_checked(&state.roms_path, path) {
+        Ok(target) => target,
+        Err(err) => return err.into_response(),
+    };
+    let metadata = match fs::metadata(&target).await {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return AppError::NotFound.into_response();
+        }
+        Err(err) => return AppError::Internal(err.to_string()).into_response(),
+    };
+
+    if metadata.is_dir() {
+        return match render_browse_page(state, &user, path).await {
             Ok(html) => Html(html).into_response(),
             Err(err) => err.into_response(),
-        },
-        None => Redirect::to("/login?next=%2Fbrowse%2F").into_response(),
+        };
     }
-}
+    if !metadata.is_file() {
+        return AppError::NotFound.into_response();
+    }
 
-async fn browse_path_page(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    AxumPath(path): AxumPath<String>,
-) -> impl IntoResponse {
-    match maybe_user(&state, &headers).await {
-        Some(user) => match render_browse_page(&state, &user, &path).await {
-            Ok(html) => Html(html).into_response(),
-            Err(err) => err.into_response(),
-        },
-        None => {
-            let next = format!("/browse/{}", encode_path(&path));
-            Redirect::to(&format!("/login?next={}", urlencoding::encode(&next))).into_response()
-        }
-    }
-}
-
-async fn play_path_page(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    AxumPath(path): AxumPath<String>,
-) -> impl IntoResponse {
-    match maybe_user(&state, &headers).await {
-        Some(user) => match validate_play_path(&path) {
-            Ok(system) => {
-                let save_path = save_path_for_rom(&path);
-                let has_save =
-                    save_file_exists(&state, &user.username, &format!("{save_path}.srm")).await;
-                Html(render_play_page(
-                    &path,
-                    &save_path,
-                    system.core,
-                    &effective_options(&user.options),
-                    has_save,
-                ))
-                .into_response()
-            }
-            Err(err) => err.into_response(),
-        },
-        None => {
-            let next = format!("/play/{}", encode_path(&path));
-            Redirect::to(&format!("/login?next={}", urlencoding::encode(&next))).into_response()
-        }
-    }
+    let system = match validate_play_path(path) {
+        Ok(system) => system,
+        Err(err) => return err.into_response(),
+    };
+    let save_path = save_path_for_rom(path);
+    let has_save = save_file_exists(state, &user.username, &format!("{save_path}.srm")).await;
+    Html(render_play_page(
+        path,
+        &save_path,
+        system.core,
+        &effective_options(&user.options),
+        has_save,
+    ))
+    .into_response()
 }
 
 async fn get_rom(
@@ -686,12 +671,12 @@ fn session_redirect_response(token: &str, next: &str) -> impl IntoResponse {
 
 fn sanitize_next(next: Option<&str>) -> String {
     let Some(next) = next else {
-        return "/browse/".to_string();
+        return "/".to_string();
     };
     if next.starts_with('/') && !next.contains("://") {
         next.to_string()
     } else {
-        "/browse/".to_string()
+        "/".to_string()
     }
 }
 
@@ -732,12 +717,12 @@ async fn render_browse_page(
         let name = entry.file_name().to_string_lossy().to_string();
         if file_type.is_dir() {
             out.push(BrowseLink {
-                href: format!("/browse/{}", encode_path(&join_path(raw_path, &name))),
+                href: content_href(&join_path(raw_path, &name)),
                 label: format!("{name}/"),
             });
         } else if file_type.is_file() && is_rom_file(&entry.path()) {
             out.push(BrowseLink {
-                href: format!("/play/{}", encode_path(&join_path(raw_path, &name))),
+                href: content_href(&join_path(raw_path, &name)),
                 label: name,
             });
         }
@@ -887,11 +872,18 @@ struct BrowseLink {
 }
 
 fn parent_href(path: &str) -> Option<String> {
-    let parent = path.rsplit_once('/')?.0;
-    if parent.is_empty() {
-        Some("/browse/".to_string())
+    if path.is_empty() {
+        return None;
+    }
+    let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
+    Some(content_href(parent))
+}
+
+fn content_href(path: &str) -> String {
+    if path.is_empty() {
+        "/".to_string()
     } else {
-        Some(format!("/browse/{}", encode_path(parent)))
+        format!("/{}", encode_path(path))
     }
 }
 
@@ -1194,6 +1186,18 @@ mod tests {
             save_path_for_rom("snes/Game (Rev 1).en.sfc"),
             "snes/Game (Rev 1).en"
         );
+    }
+
+    #[test]
+    fn content_links_use_the_filesystem_path_directly() {
+        assert_eq!(content_href(""), "/");
+        assert_eq!(content_href("nes"), "/nes");
+        assert_eq!(
+            content_href("nes/Super Mario Bros.nes"),
+            "/nes/Super%20Mario%20Bros.nes"
+        );
+        assert_eq!(parent_href("nes"), Some("/".to_string()));
+        assert_eq!(parent_href("nes/Mario"), Some("/nes".to_string()));
     }
 
     #[test]

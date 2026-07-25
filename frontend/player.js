@@ -101,7 +101,7 @@ function encodePath(value) {
 
 function browseUrlFor(romPath) {
   const parent = romPath.split("/").slice(0, -1).join("/");
-  return parent ? `/browse/${encodePath(parent)}` : "/browse/";
+  return parent ? `/${encodePath(parent)}` : "/";
 }
 
 async function putBytes(url, data) {

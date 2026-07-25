@@ -15,11 +15,10 @@ cargo run -- --config config.example.json
 
 ## ROM Browsing
 
-Browsing is plain filesystem browsing under `roms/`.
-
-- `/browse/` shows the ROM root.
-- `/browse/<path>` browses `roms/<path>`.
-- `/play/<path>` opens `roms/<path>` in the player.
+Browsing follows the filesystem under `roms/`. A URL such as `/nes/` renders
+the matching directory, while `/nes/Super Mario Bros.nes` opens that ROM in
+the player. The server determines which page to render from the target's file
+type.
 
 The player still uses the first path segment to select the EmulatorJS core, so the selected ROM must live under a recognized top-level folder.
 
