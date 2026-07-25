@@ -24,7 +24,7 @@ use tower_http::trace::TraceLayer;
 use crate::{
     auth::{self, maybe_user, User},
     config::{effective_options, merge_options, Config, EffectiveOptions},
-    pages::{content_href, render_browse_page, render_play_page},
+    pages::{content_href, normalize_content_path, render_browse_page, render_play_page},
     storage::{self, join_checked, save_file_exists, save_path_for_rom, validate_play_path},
     systems::SystemRegistry,
 };
@@ -171,10 +171,16 @@ async fn content_or_asset(
     headers: HeaderMap,
     AxumPath(path): AxumPath<String>,
 ) -> Response {
-    match Assets::get(&path) {
-        Some(asset) => asset_response(&path, asset),
-        None => content_page(&state, &headers, &path).await,
+    if let Some(asset) = Assets::get(&path) {
+        return asset_response(&path, asset);
     }
+
+    let normalized = normalize_content_path(&path);
+    if path.ends_with('/') && path != normalized && !normalized.is_empty() {
+        return Redirect::to(&content_href(&normalized)).into_response();
+    }
+
+    content_page(&state, &headers, &normalized).await
 }
 
 fn asset_response(path: &str, asset: rust_embed::EmbeddedFile) -> Response {

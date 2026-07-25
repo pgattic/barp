@@ -185,14 +185,23 @@ pub(crate) fn render_login_page(next: &str, error: Option<&str>) -> String {
 }
 
 pub(crate) fn content_href(path: &str) -> String {
+    let path = normalize_content_path(path);
     if path.is_empty() {
         "/".to_string()
     } else {
-        format!("/{}", encode_path(path))
+        format!("/{}", encode_path(&path))
     }
 }
 
+pub(crate) fn normalize_content_path(path: &str) -> String {
+    path.split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 fn path_crumbs(path: &str) -> String {
+    let path = normalize_content_path(path);
     let mut html = format!("<a href=\"{}\">roms</a>", escape_html(&content_href("")));
     if path.is_empty() {
         return html;
@@ -215,6 +224,7 @@ fn path_crumbs(path: &str) -> String {
 }
 
 fn join_path(base: &str, child: &str) -> String {
+    let base = normalize_content_path(base);
     if base.is_empty() {
         child.to_string()
     } else {
@@ -249,6 +259,15 @@ mod tests {
             content_href("nes/Super Mario Bros.nes"),
             "/nes/Super%20Mario%20Bros.nes"
         );
+    }
+
+    #[test]
+    fn normalize_content_path_strips_slashes_and_empty_segments() {
+        assert_eq!(normalize_content_path("nes/"), "nes");
+        assert_eq!(normalize_content_path("/nes/"), "nes");
+        assert_eq!(normalize_content_path("nes//mario"), "nes/mario");
+        assert_eq!(join_path("nes/", "mario"), "nes/mario");
+        assert_eq!(content_href("nes/"), "/nes");
     }
 
     #[test]
