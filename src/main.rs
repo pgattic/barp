@@ -487,6 +487,9 @@ async fn browse_impl(
             .await
             .map_err(|err| AppError::Internal(err.to_string()))?;
         let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
         if file_type.is_dir() {
             out.push(BrowseEntry { name, kind: "dir" });
         } else if file_type.is_file() && is_rom_file(&entry.path()) {
@@ -715,27 +718,30 @@ async fn render_browse_page(
             .await
             .map_err(|err| AppError::Internal(err.to_string()))?;
         let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
         if file_type.is_dir() {
             out.push(BrowseLink {
                 href: content_href(&join_path(raw_path, &name)),
                 label: format!("{name}/"),
+                is_dir: true,
             });
         } else if file_type.is_file() && is_rom_file(&entry.path()) {
             out.push(BrowseLink {
                 href: content_href(&join_path(raw_path, &name)),
                 label: name,
+                is_dir: false,
             });
         }
     }
-    out.sort_by_key(|a| a.label.to_lowercase());
+    out.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase()))
+    });
 
     let mut rows = String::new();
-    if let Some(parent) = parent_href(raw_path) {
-        rows.push_str(&format!(
-            "<div class=\"row\"><a href=\"{}\">..</a></div>",
-            escape_html(&parent)
-        ));
-    }
     for entry in out {
         rows.push_str(&format!(
             "<div class=\"row\"><a href=\"{}\">{}</a></div>",
@@ -744,29 +750,20 @@ async fn render_browse_page(
         ));
     }
 
-    let title_text = if raw_path.is_empty() {
-        "Browse".to_string()
-    } else {
-        raw_path.to_string()
-    };
-    let path_text = if raw_path.is_empty() {
-        "/".to_string()
-    } else {
-        format!("/{raw_path}")
-    };
-
     Ok(format!(
         r#"<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Barecade - {title}</title>
+    <title>Barecade</title>
     <style>
       body {{ font-family: sans-serif; margin: 1rem; }}
       .toolbar {{ display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }}
       .row a {{ display: block; padding: .25rem 0; }}
       .path {{ color: #444; }}
+      .path a {{ color: inherit; text-decoration: none; }}
+      .path a:hover {{ text-decoration: underline; }}
     </style>
   </head>
   <body>
@@ -778,15 +775,14 @@ async fn render_browse_page(
           <button type="submit">Log out</button>
         </form>
       </div>
-      <h1>{title}</h1>
-      <p class="path">{path_label}</p>
+      <h1>Library</h1>
+      <p class="path">{crumbs}</p>
       <section>{rows}</section>
     </main>
   </body>
 </html>"#,
-        title = escape_html(&title_text),
         user = escape_html(&user.display_name),
-        path_label = escape_html(&path_text),
+        crumbs = path_crumbs(raw_path),
         rows = rows,
     ))
 }
@@ -869,14 +865,7 @@ fn render_login_page(next: &str, error: Option<&str>) -> String {
 struct BrowseLink {
     href: String,
     label: String,
-}
-
-fn parent_href(path: &str) -> Option<String> {
-    if path.is_empty() {
-        return None;
-    }
-    let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
-    Some(content_href(parent))
+    is_dir: bool,
 }
 
 fn content_href(path: &str) -> String {
@@ -885,6 +874,28 @@ fn content_href(path: &str) -> String {
     } else {
         format!("/{}", encode_path(path))
     }
+}
+
+fn path_crumbs(path: &str) -> String {
+    let mut html = format!("<a href=\"{}\">roms</a>", escape_html(&content_href("")));
+    if path.is_empty() {
+        return html;
+    }
+
+    let mut accumulated = String::new();
+    for segment in path.split('/') {
+        html.push_str(" / ");
+        if !accumulated.is_empty() {
+            accumulated.push('/');
+        }
+        accumulated.push_str(segment);
+        html.push_str(&format!(
+            "<a href=\"{}\">{}</a>",
+            escape_html(&content_href(&accumulated)),
+            escape_html(segment)
+        ));
+    }
+    html
 }
 
 fn join_path(base: &str, child: &str) -> String {
@@ -1196,8 +1207,19 @@ mod tests {
             content_href("nes/Super Mario Bros.nes"),
             "/nes/Super%20Mario%20Bros.nes"
         );
-        assert_eq!(parent_href("nes"), Some("/".to_string()));
-        assert_eq!(parent_href("nes/Mario"), Some("/nes".to_string()));
+    }
+
+    #[test]
+    fn path_crumbs_link_each_directory_segment() {
+        assert_eq!(path_crumbs(""), "<a href=\"/\">roms</a>");
+        assert_eq!(
+            path_crumbs("nes"),
+            "<a href=\"/\">roms</a> / <a href=\"/nes\">nes</a>"
+        );
+        assert_eq!(
+            path_crumbs("nes/Mario"),
+            "<a href=\"/\">roms</a> / <a href=\"/nes\">nes</a> / <a href=\"/nes/Mario\">Mario</a>"
+        );
     }
 
     #[test]
