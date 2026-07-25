@@ -404,7 +404,7 @@ mod tests {
     use super::*;
 
     fn test_emulatorjs_path() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/emulatorjs/data")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/emulatorjs/data")
     }
 
     #[test]
@@ -417,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn supports_every_vendored_core_as_a_config_target() {
+    fn supports_every_fixture_core_as_a_config_target() {
         let emulatorjs_path = test_emulatorjs_path();
         let cores_text =
             std::fs::read_to_string(emulatorjs_path.join("cores/cores.json")).unwrap();

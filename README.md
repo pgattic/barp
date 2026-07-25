@@ -70,8 +70,14 @@ those systems does not remove their upstream BIOS requirement.
 `emulatorjs_path` must point at an EmulatorJS `data/` directory (the folder
 that contains `loader.js`). BARP serves that tree at `/emulatorjs/data/`.
 
-For local development, vendor the pinned upstream release and point config at
-the resulting path:
+For local development, unpack or clone EmulatorJS and point config at its
+`data/` directory, for example:
+
+```json
+"emulatorjs_path": "/home/pgattic/git/emulatorjs/data"
+```
+
+Or vendor the pinned upstream release into the repo workspace:
 
 ```sh
 nix develop --builders '' --command scripts/vendor-emulatorjs.sh
@@ -81,5 +87,44 @@ nix develop --builders '' --command scripts/vendor-emulatorjs.sh
 "emulatorjs_path": "./frontend/emulatorjs/data"
 ```
 
-On NixOS, point `emulatorjs_path` at a store path from a release `fetchzip`
-(or equivalent) instead of embedding EmulatorJS into the BARP binary.
+## NixOS Module
+
+Import the flake module and declare users, ROM/save paths, and password hash
+files:
+
+```nix
+{
+  inputs.barp.url = "github:pgattic/barp";
+
+  outputs = { nixpkgs, barp, ... }: {
+    nixosConfigurations.arcade = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        barp.nixosModules.default
+        {
+          services.barp = {
+            enable = true;
+            openFirewall = true;
+            romsPath = "/var/lib/roms";
+            users.player1 = {
+              displayName = "Player 1";
+              passwordHashFile = "/run/agenix/barp-player1-hash";
+            };
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+Generate password hashes with:
+
+```sh
+nix run .#barp -- hash-password
+```
+
+Store the PHC string in a file (agenix, sops-nix, or a root-readable path) and
+point `passwordHashFile` at it. The module generates BARP's JSON config and
+runs a sandboxed systemd service with EmulatorJS provided by
+`packages.emulatorjs`.

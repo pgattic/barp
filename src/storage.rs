@@ -347,7 +347,7 @@ mod tests {
     #[test]
     fn rejects_unknown_system_folder() {
         let emulatorjs_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/emulatorjs/data");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/emulatorjs/data");
         let registry = SystemRegistry::new(&emulatorjs_path, &HashMap::new()).unwrap();
         assert!(validate_system_path(&registry, "unknown/sonic.bin").is_err());
         assert!(validate_system_path(&registry, "genesis/sonic.bin").is_ok());

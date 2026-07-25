@@ -59,11 +59,11 @@ BARP = Boring Ahh ROM Player.
 - [ ] Regenerate user's saves dir if deleted externally, don't crash
 
 ## Phase 8 — NixOS module
-- [ ] Package via crane/naersk
-- [ ] `services.barp`: `enable`, `romsPath`, `savesPath`, `port`, `defaultOptions`, `users.<name>.{passwordHashFile, displayName, optionOverrides}`
-- [ ] Generate config JSON from module options
-- [ ] systemd unit with Phase 7 sandboxing
-- [ ] Document mkpasswd + agenix workflow
+- [x] Package via flake `buildRustPackage` (plus separate EmulatorJS release package)
+- [x] `services.barp`: `enable`, `romsPath`, `savesPath`, `port`, `defaultOptions`, `users.<name>.{passwordHashFile, displayName, optionOverrides}`
+- [x] Generate config JSON from module options
+- [x] systemd unit with Phase 7 sandboxing
+- [x] Document mkpasswd/`barp hash-password` + agenix workflow
 - [ ] Test: declare user → rebuild → login → saves persist across second rebuild
 
 ## Phase 9 — Rollout
