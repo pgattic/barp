@@ -32,6 +32,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncSeekExt, SeekFrom},
     sync::Mutex,
 };
+use tokio_util::io::ReaderStream;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
@@ -165,6 +166,12 @@ enum AppError {
     RangeNotSatisfiable,
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+impl From<io::Error> for AppError {
+    fn from(err: io::Error) -> Self {
+        Self::Internal(err.to_string())
+    }
 }
 
 impl IntoResponse for AppError {
@@ -472,20 +479,13 @@ async fn browse_impl(
     require_user(&state, &headers).await?;
     let dir = join_checked(&state.roms_path, raw_path)?;
     let mut entries = fs::read_dir(&dir).await.map_err(|err| match err.kind() {
-        std::io::ErrorKind::NotFound => AppError::NotFound,
-        _ => AppError::Internal(err.to_string()),
+        io::ErrorKind::NotFound => AppError::NotFound,
+        _ => err.into(),
     })?;
 
     let mut out = Vec::new();
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|err| AppError::Internal(err.to_string()))?
-    {
-        let file_type = entry
-            .file_type()
-            .await
-            .map_err(|err| AppError::Internal(err.to_string()))?;
+    while let Some(entry) = entries.next_entry().await? {
+        let file_type = entry.file_type().await?;
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
@@ -517,10 +517,10 @@ async fn content_page(state: &AppState, headers: &HeaderMap, path: &str) -> Resp
     };
     let metadata = match fs::metadata(&target).await {
         Ok(metadata) => metadata,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
             return AppError::NotFound.into_response();
         }
-        Err(err) => return AppError::Internal(err.to_string()).into_response(),
+        Err(err) => return AppError::from(err).into_response(),
     };
 
     if metadata.is_dir() {
@@ -591,9 +591,7 @@ async fn put_save(
     let _guard = lock.lock().await;
     let save_path = user_save_path(&state, &user.username, &path)?;
     if let Some(parent) = save_path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|err| AppError::Internal(err.to_string()))?;
+        fs::create_dir_all(parent).await?;
     }
     let tmp = save_path.with_extension(format!(
         "{}.tmp.{}",
@@ -603,12 +601,8 @@ async fn put_save(
             .unwrap_or("save"),
         new_token()
     ));
-    fs::write(&tmp, &body)
-        .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
-    fs::rename(&tmp, &save_path)
-        .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
+    fs::write(&tmp, &body).await?;
+    fs::rename(&tmp, &save_path).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -703,20 +697,13 @@ async fn render_browse_page(
 ) -> Result<String, AppError> {
     let dir = join_checked(&state.roms_path, raw_path)?;
     let mut dir_entries = fs::read_dir(&dir).await.map_err(|err| match err.kind() {
-        std::io::ErrorKind::NotFound => AppError::NotFound,
-        _ => AppError::Internal(err.to_string()),
+        io::ErrorKind::NotFound => AppError::NotFound,
+        _ => err.into(),
     })?;
 
     let mut out = Vec::new();
-    while let Some(entry) = dir_entries
-        .next_entry()
-        .await
-        .map_err(|err| AppError::Internal(err.to_string()))?
-    {
-        let file_type = entry
-            .file_type()
-            .await
-            .map_err(|err| AppError::Internal(err.to_string()))?;
+    while let Some(entry) = dir_entries.next_entry().await? {
+        let file_type = entry.file_type().await?;
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
@@ -996,8 +983,8 @@ async fn save_file_exists(state: &AppState, username: &str, raw_path: &str) -> b
 
 async fn stream_file(path: PathBuf, headers: HeaderMap) -> Result<Response, AppError> {
     let metadata = fs::metadata(&path).await.map_err(|err| match err.kind() {
-        std::io::ErrorKind::NotFound => AppError::NotFound,
-        _ => AppError::Internal(err.to_string()),
+        io::ErrorKind::NotFound => AppError::NotFound,
+        _ => err.into(),
     })?;
     if !metadata.is_file() {
         return Err(AppError::NotFound);
@@ -1022,16 +1009,9 @@ async fn stream_file(path: PathBuf, headers: HeaderMap) -> Result<Response, AppE
         None => (0, len.saturating_sub(1), StatusCode::OK),
     };
     let bytes_to_read = if len == 0 { 0 } else { end - start + 1 };
-    let mut file = fs::File::open(&path)
-        .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
-    file.seek(SeekFrom::Start(start))
-        .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
-    let mut buf = vec![0_u8; bytes_to_read as usize];
-    file.read_exact(&mut buf)
-        .await
-        .map_err(|err| AppError::Internal(err.to_string()))?;
+    let mut file = fs::File::open(&path).await?;
+    file.seek(SeekFrom::Start(start)).await?;
+    let body = Body::from_stream(ReaderStream::new(file.take(bytes_to_read)));
 
     let mut builder = Response::builder().status(status);
     builder = builder.header(header::ACCEPT_RANGES, "bytes");
@@ -1043,7 +1023,7 @@ async fn stream_file(path: PathBuf, headers: HeaderMap) -> Result<Response, AppE
         builder = builder.header(header::CONTENT_TYPE, mime.as_ref());
     }
     builder
-        .body(Body::from(buf))
+        .body(body)
         .map_err(|err| AppError::Internal(err.to_string()))
 }
 
