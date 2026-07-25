@@ -4,8 +4,9 @@
   "state_path": "./state",
   "port": 3000,
   "default_options": {
-    "display_filter": "smooth",
-    "integer_scaling": false
+    "shader": "disabled",
+    "smooth": false,
+    "integer_scale": false
   },
   "system_mappings": {},
   "users": [

@@ -5,7 +5,7 @@ use tokio::fs;
 use crate::{
     app::{AppError, AppState},
     auth::User,
-    config::{DisplayFilter, EffectiveOptions},
+    config::EffectiveOptions,
     storage::{encode_path, join_checked},
 };
 
@@ -113,12 +113,8 @@ pub(crate) fn render_play_page(
     has_save: bool,
     threads: bool,
 ) -> String {
-    let filter = match options.display_filter {
-        DisplayFilter::Pixelated => "pixelated",
-        DisplayFilter::Smooth => "smooth",
-        DisplayFilter::None => "none",
-    };
-    let integer_scaling = if options.integer_scaling { "1" } else { "0" };
+    let smooth = if options.smooth { "1" } else { "0" };
+    let integer_scale = if options.integer_scale { "1" } else { "0" };
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -129,9 +125,15 @@ pub(crate) fn render_play_page(
     <style>
       html, body {{ width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }}
       #game {{ width: 100vw; height: 100vh; }}
+      #game .ejs_parent,
+      #game .ejs_canvas_parent {{
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }}
     </style>
   </head>
-  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}" data-has-save="{has_save}" data-threads="{threads}">
+  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-shader="{shader}" data-smooth="{smooth}" data-integer-scale="{integer_scale}" data-has-save="{has_save}" data-threads="{threads}">
     <div id="game"></div>
     <script src="/player.js"></script>
   </body>
@@ -139,8 +141,9 @@ pub(crate) fn render_play_page(
         path = escape_html(path),
         save_path = escape_html(save_path),
         core = escape_html(core),
-        filter = escape_html(filter),
-        integer_scaling = integer_scaling,
+        shader = escape_html(&options.shader),
+        smooth = smooth,
+        integer_scale = integer_scale,
         has_save = if has_save { "1" } else { "0" },
         threads = if threads { "1" } else { "0" },
     )

@@ -44,6 +44,27 @@ Configured mappings override built-in aliases with the same folder name.
 Some systems require firmware that EmulatorJS cannot distribute. Recognizing
 those systems does not remove their upstream BIOS requirement.
 
+## Display Options
+
+`default_options` (and per-user `option_overrides`) control presentation:
+
+```json
+"default_options": {
+  "shader": "disabled",
+  "smooth": false,
+  "integer_scale": true
+}
+```
+
+- `shader` is the EmulatorJS shader setting. Use `"disabled"` or a built-in
+  name such as `"crt-mattias.glslp"`, `"2xScaleHQ.glslp"`, or `"bicubic"`.
+- `smooth` controls browser upscaling of the canvas (`false` = crisp pixels,
+  `true` = bilinear). EmulatorJS itself hardcodes RetroArch `video_smooth`
+  off; this option affects how the page scales that bitmap.
+- `integer_scale` sizes the canvas to an integer multiple of the core's
+  native resolution. EmulatorJS 4.2.3 has no built-in integer-scale setting,
+  so Barecade applies this itself.
+
 ## EmulatorJS Assets
 
 The embedded frontend expects EmulatorJS's runtime assets under `frontend/emulatorjs/data/`, served as `/emulatorjs/data/`.

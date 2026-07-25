@@ -4,9 +4,10 @@ const dataset = document.body.dataset;
 const path = dataset.path || params.get("path");
 const savePath = dataset.savePath || params.get("savePath");
 const core = dataset.core || params.get("core");
-const filter = dataset.filter || params.get("filter") || "smooth";
-const integerScaling =
-  (dataset.integerScaling || params.get("integerScaling") || "0") === "1";
+const shader = dataset.shader || params.get("shader") || "disabled";
+const smooth = (dataset.smooth || params.get("smooth") || "0") === "1";
+const integerScale =
+  (dataset.integerScale || params.get("integerScale") || "0") === "1";
 const hasSave = (dataset.hasSave || params.get("hasSave") || "0") === "1";
 const threads = (dataset.threads || params.get("threads") || "0") === "1";
 
@@ -42,13 +43,12 @@ window.EJS_Buttons = {
   loadState: true,
 };
 window.EJS_defaultOptions = {
-  shader: filter === "pixelated" ? "nearest" : "default",
-  screenRecords: false,
+  // EmulatorJS shader menu values: "disabled" or a built-in shader key.
+  shader,
   "save-state-slot": 1,
   // Flush battery saves often enough that a short session still persists.
   "save-save-interval": 30,
 };
-window.EJS_integerScale = integerScaling;
 
 // Save-state button. Handler replaces EmulatorJS download/browser storage.
 // Payload is { screenshot, format, state } — only `state` is the bytes.
@@ -82,6 +82,7 @@ window.EJS_onGameStart = async () => {
   if (hasSave) {
     await restoreSram();
   }
+  applyDisplay();
 };
 
 // Register before GameManager adds its own exit cleanup. This lets us flush
@@ -89,6 +90,8 @@ window.EJS_onGameStart = async () => {
 window.EJS_ready = () => {
   window.EJS_emulator.on("exit", exitToBrowser);
 };
+
+window.addEventListener("resize", applyDisplay);
 
 const script = document.createElement("script");
 script.src = "/emulatorjs/data/loader.js";
@@ -110,6 +113,42 @@ function navigationType() {
 function browseUrlFor(romPath) {
   const parent = romPath.split("/").slice(0, -1).join("/");
   return parent ? `/${encodePath(parent)}` : "/";
+}
+
+function applyDisplay() {
+  const canvas = window.EJS_emulator?.canvas;
+  if (!canvas) return;
+
+  // EmulatorJS hardcodes RetroArch video_smooth=false. Browser CSS controls
+  // how the canvas bitmap is upscaled to the page.
+  canvas.style.imageRendering = smooth ? "auto" : "pixelated";
+
+  if (!integerScale) {
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    return;
+  }
+
+  const gameManager = window.EJS_emulator.gameManager;
+  const nativeWidth =
+    gameManager?.getVideoDimensions?.("width") || canvas.width || 0;
+  const nativeHeight =
+    gameManager?.getVideoDimensions?.("height") || canvas.height || 0;
+  if (!nativeWidth || !nativeHeight) {
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    return;
+  }
+
+  const parent = canvas.parentElement || document.querySelector("#game");
+  const maxWidth = parent?.clientWidth || window.innerWidth;
+  const maxHeight = parent?.clientHeight || window.innerHeight;
+  const scale = Math.max(
+    1,
+    Math.floor(Math.min(maxWidth / nativeWidth, maxHeight / nativeHeight)),
+  );
+  canvas.style.width = `${nativeWidth * scale}px`;
+  canvas.style.height = `${nativeHeight * scale}px`;
 }
 
 async function putBytes(url, data) {

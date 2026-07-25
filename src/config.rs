@@ -20,18 +20,17 @@ pub(crate) struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(crate) struct Options {
+    /// EmulatorJS shader setting. Use `"disabled"` or a built-in shader name
+    /// such as `"crt-mattias.glslp"` / `"2xScaleHQ.glslp"` / `"bicubic"`.
     #[serde(default)]
-    pub(crate) display_filter: Option<DisplayFilter>,
+    pub(crate) shader: Option<String>,
+    /// Browser upscale filtering for the game canvas. `false` keeps pixels
+    /// crisp; `true` allows smooth bilinear scaling.
     #[serde(default)]
-    pub(crate) integer_scaling: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum DisplayFilter {
-    Smooth,
-    Pixelated,
-    None,
+    pub(crate) smooth: Option<bool>,
+    /// Size the canvas to an integer multiple of the core's native resolution.
+    #[serde(default)]
+    pub(crate) integer_scale: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -45,27 +44,29 @@ pub(crate) struct UserConfig {
 
 #[derive(Debug, Serialize)]
 pub(crate) struct EffectiveOptions {
-    pub(crate) display_filter: DisplayFilter,
-    pub(crate) integer_scaling: bool,
+    pub(crate) shader: String,
+    pub(crate) smooth: bool,
+    pub(crate) integer_scale: bool,
 }
 
 pub(crate) fn merge_options(defaults: &Options, overrides: &Options) -> Options {
     Options {
-        display_filter: overrides
-            .display_filter
-            .clone()
-            .or_else(|| defaults.display_filter.clone()),
-        integer_scaling: overrides.integer_scaling.or(defaults.integer_scaling),
+        shader: overrides.shader.clone().or_else(|| defaults.shader.clone()),
+        smooth: overrides.smooth.or(defaults.smooth),
+        integer_scale: overrides.integer_scale.or(defaults.integer_scale),
     }
 }
 
 pub(crate) fn effective_options(options: &Options) -> EffectiveOptions {
     EffectiveOptions {
-        display_filter: options
-            .display_filter
+        // EmulatorJS defaults to shaders disabled; its RetroArch cfg also
+        // forces video_smooth=false, so crisp pixels are the natural default.
+        shader: options
+            .shader
             .clone()
-            .unwrap_or(DisplayFilter::Smooth),
-        integer_scaling: options.integer_scaling.unwrap_or(false),
+            .unwrap_or_else(|| "disabled".to_string()),
+        smooth: options.smooth.unwrap_or(false),
+        integer_scale: options.integer_scale.unwrap_or(false),
     }
 }
 
