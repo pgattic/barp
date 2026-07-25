@@ -26,7 +26,9 @@ window.EJS_player = "#game";
 window.EJS_gameUrl = romUrl;
 window.EJS_core = core;
 window.EJS_pathtodata = "/emulatorjs/data/";
-window.EJS_startOnLoaded = true;
+// Auto-start only for link navigations. Browser reload has no reliable
+// permission/gesture and often sticks on a gray screen until a click.
+window.EJS_startOnLoaded = navigationType() === "navigate";
 window.EJS_disableDatabases = true;
 window.EJS_threads = false;
 window.EJS_Buttons = {
@@ -97,6 +99,11 @@ document.body.append(script);
 
 function encodePath(value) {
   return value.split("/").map(encodeURIComponent).join("/");
+}
+
+function navigationType() {
+  const entry = performance.getEntriesByType?.("navigation")?.[0];
+  return entry?.type || "navigate";
 }
 
 function browseUrlFor(romPath) {
