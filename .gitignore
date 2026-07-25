@@ -3,3 +3,5 @@
 /state
 /.direnv
 /frontend/emulatorjs
+/config.json
+/secrets/
