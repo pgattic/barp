@@ -9,12 +9,11 @@
     "integer_scale": false
   },
   "system_mappings": {},
-  "users": [
-    {
-      "username": "player1",
+  "users": {
+    "player1": {
       "display_name": "Player 1",
       "password_hash_file": "./secrets/player1.hash",
       "option_overrides": {}
     }
-  ]
+  }
 }

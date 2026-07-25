@@ -13,7 +13,7 @@ pub(crate) struct Config {
     #[serde(default)]
     pub(crate) default_options: Options,
     #[serde(default)]
-    pub(crate) users: Vec<UserConfig>,
+    pub(crate) users: HashMap<String, UserConfig>,
     #[serde(default)]
     pub(crate) system_mappings: HashMap<String, String>,
 }
@@ -35,7 +35,6 @@ pub(crate) struct Options {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct UserConfig {
-    pub(crate) username: String,
     pub(crate) display_name: String,
     pub(crate) password_hash_file: PathBuf,
     #[serde(default)]

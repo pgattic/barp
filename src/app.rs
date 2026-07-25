@@ -126,12 +126,12 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
     let systems = SystemRegistry::new(&config.system_mappings)?;
 
     let mut users = HashMap::new();
-    for user in &config.users {
+    for (username, user) in &config.users {
         let password_hash = fs::read_to_string(&user.password_hash_file).await?;
         users.insert(
-            user.username.clone(),
+            username.clone(),
             User {
-                username: user.username.clone(),
+                username: username.clone(),
                 display_name: user.display_name.clone(),
                 password_hash: password_hash.trim().to_owned(),
                 options: merge_options(&config.default_options, &user.option_overrides),

@@ -11,7 +11,7 @@ BARP = Boring Ahh ROM Player.
 - [ ] flake.nix dev shell
 
 ## Phase 1 — Backend skeleton
-- [ ] Config struct: `roms_path`, `saves_path`, `port`, `default_options`, `system_mappings`, `users[{username, display_name, password_hash_file, option_overrides}]`
+- [ ] Config struct: `roms_path`, `saves_path`, `port`, `default_options`, `system_mappings`, `users.<username>.{display_name, password_hash_file, option_overrides}`
 - [ ] Load config JSON at startup
 - [ ] `/healthz`, logging via `tracing`
 
