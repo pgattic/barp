@@ -13,12 +13,12 @@ use argon2::{
 };
 use axum::{
     body::Body,
-    extract::{Path as AxumPath, State},
+    extract::{Form, Path as AxumPath, Query, State},
     http::{
         header::{self, HeaderMap, HeaderValue},
         StatusCode,
     },
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -103,6 +103,20 @@ struct User {
 struct LoginRequest {
     username: String,
     password: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LoginForm {
+    username: String,
+    password: String,
+    #[serde(default)]
+    next: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NextQuery {
+    #[serde(default)]
+    next: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,6 +225,8 @@ fn hash_password_command() -> Result<(), Box<dyn std::error::Error>> {
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
+        .route("/login", get(login_page).post(login_form))
+        .route("/logout", post(logout_form))
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/login", post(login))
         .route("/api/logout", post(logout))
@@ -219,6 +235,10 @@ fn router(state: AppState) -> Router {
         .route("/api/browse/*path", get(browse_path))
         .route("/api/roms/*path", get(get_rom))
         .route("/api/saves/*path", get(get_save).put(put_save))
+        .route("/browse", get(browse_root_page))
+        .route("/browse/", get(browse_root_page))
+        .route("/browse/*path", get(browse_path_page))
+        .route("/play/*path", get(play_path_page))
         .fallback(static_asset)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -306,22 +326,60 @@ fn merge_options(defaults: &Options, overrides: &Options) -> Options {
     }
 }
 
-async fn index() -> impl IntoResponse {
-    static_asset_path("index.html").await
+async fn index(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    match maybe_user(&state, &headers).await {
+        Some(_) => Redirect::to("/browse/").into_response(),
+        None => Redirect::to("/login?next=%2Fbrowse%2F").into_response(),
+    }
+}
+
+async fn login_page(Query(query): Query<NextQuery>) -> Html<String> {
+    Html(render_login_page(
+        query.next.as_deref().unwrap_or("/browse/"),
+        None,
+    ))
+}
+
+async fn login_form(
+    State(state): State<AppState>,
+    Form(form): Form<LoginForm>,
+) -> impl IntoResponse {
+    let next = sanitize_next(form.next.as_deref());
+    match authenticate_user(&state, &form.username, &form.password).await {
+        Ok(user) => {
+            let token = new_token();
+            state
+                .sessions
+                .lock()
+                .await
+                .insert(token.clone(), user.username);
+            session_redirect_response(&token, &next).into_response()
+        }
+        Err(_) => (
+            StatusCode::UNAUTHORIZED,
+            Html(render_login_page(
+                &next,
+                Some("Invalid username or password"),
+            )),
+        )
+            .into_response(),
+    }
+}
+
+async fn logout_form(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    if let Some(token) = cookie_token(&headers) {
+        state.sessions.lock().await.remove(&token);
+    }
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(
+        header::SET_COOKIE,
+        HeaderValue::from_static("barecade_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/"),
+    );
+    (response_headers, Redirect::to("/login")).into_response()
 }
 
 async fn static_asset(uri: axum::http::Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
-    match Assets::get(if path.is_empty() { "index.html" } else { path }) {
-        Some(asset) => asset_response(path, asset),
-        None if path.starts_with("api/") || path.starts_with("emulatorjs/") => {
-            AppError::NotFound.into_response()
-        }
-        None => static_asset_path("index.html").await,
-    }
-}
-
-async fn static_asset_path(path: &str) -> Response {
     match Assets::get(path) {
         Some(asset) => asset_response(path, asset),
         None => AppError::NotFound.into_response(),
@@ -416,7 +474,6 @@ async fn browse_impl(
     raw_path: &str,
 ) -> Result<impl IntoResponse, AppError> {
     require_user(&state, &headers).await?;
-    validate_system_path(raw_path)?;
     let dir = join_checked(&state.roms_path, raw_path)?;
     let mut entries = fs::read_dir(&dir).await.map_err(|err| match err.kind() {
         std::io::ErrorKind::NotFound => AppError::NotFound,
@@ -435,9 +492,6 @@ async fn browse_impl(
             .map_err(|err| AppError::Internal(err.to_string()))?;
         let name = entry.file_name().to_string_lossy().to_string();
         if file_type.is_dir() {
-            if raw_path.is_empty() && system_for_folder(&name).is_none() {
-                continue;
-            }
             out.push(BrowseEntry { name, kind: "dir" });
         } else if file_type.is_file() && is_rom_file(&entry.path()) {
             out.push(BrowseEntry { name, kind: "file" });
@@ -449,6 +503,55 @@ async fn browse_impl(
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(Json(out))
+}
+
+async fn browse_root_page(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    match maybe_user(&state, &headers).await {
+        Some(user) => match render_browse_page(&state, &user, "").await {
+            Ok(html) => Html(html).into_response(),
+            Err(err) => err.into_response(),
+        },
+        None => Redirect::to("/login?next=%2Fbrowse%2F").into_response(),
+    }
+}
+
+async fn browse_path_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(path): AxumPath<String>,
+) -> impl IntoResponse {
+    match maybe_user(&state, &headers).await {
+        Some(user) => match render_browse_page(&state, &user, &path).await {
+            Ok(html) => Html(html).into_response(),
+            Err(err) => err.into_response(),
+        },
+        None => {
+            let next = format!("/browse/{}", encode_path(&path));
+            Redirect::to(&format!("/login?next={}", urlencoding::encode(&next))).into_response()
+        }
+    }
+}
+
+async fn play_path_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(path): AxumPath<String>,
+) -> impl IntoResponse {
+    match maybe_user(&state, &headers).await {
+        Some(user) => match validate_play_path(&path) {
+            Ok(system) => Html(render_play_page(
+                &path,
+                system.core,
+                &effective_options(&user.options),
+            ))
+            .into_response(),
+            Err(err) => err.into_response(),
+        },
+        None => {
+            let next = format!("/play/{}", encode_path(&path));
+            Redirect::to(&format!("/login?next={}", urlencoding::encode(&next))).into_response()
+        }
+    }
 }
 
 async fn get_rom(
@@ -542,6 +645,266 @@ fn new_token() -> String {
     let mut bytes = [0_u8; 32];
     OsRng.fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
+}
+
+async fn maybe_user(state: &AppState, headers: &HeaderMap) -> Option<User> {
+    let token = cookie_token(headers)?;
+    let sessions = state.sessions.lock().await;
+    let username = sessions.get(&token)?;
+    state.users.get(username).cloned()
+}
+
+async fn authenticate_user(
+    state: &AppState,
+    username: &str,
+    password: &str,
+) -> Result<User, AppError> {
+    let user = state.users.get(username).ok_or(AppError::Unauthorized)?;
+    let parsed_hash = PasswordHash::new(&user.password_hash).map_err(|_| AppError::Unauthorized)?;
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .map_err(|_| AppError::Unauthorized)?;
+    Ok(user.clone())
+}
+
+fn session_redirect_response(token: &str, next: &str) -> impl IntoResponse {
+    let mut headers = HeaderMap::new();
+    let cookie = format!("{SESSION_COOKIE}={token}; HttpOnly; SameSite=Lax; Path=/");
+    headers.insert(header::SET_COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    (headers, Redirect::to(next))
+}
+
+fn sanitize_next(next: Option<&str>) -> String {
+    let Some(next) = next else {
+        return "/browse/".to_string();
+    };
+    if next.starts_with('/') && !next.contains("://") {
+        next.to_string()
+    } else {
+        "/browse/".to_string()
+    }
+}
+
+fn validate_play_path(path: &str) -> Result<&'static SystemInfo, AppError> {
+    validate_system_path(path)?;
+    let rom_path = join_checked(Path::new(""), path)?;
+    if !is_rom_file(&rom_path) {
+        return Err(AppError::BadRequest("unrecognized ROM extension".into()));
+    }
+    let first = sanitize_segments(path)?
+        .first()
+        .cloned()
+        .ok_or_else(|| AppError::BadRequest("missing system".into()))?;
+    system_for_folder(&first).ok_or(AppError::BadRequest("unknown system".into()))
+}
+
+async fn render_browse_page(
+    state: &AppState,
+    user: &User,
+    raw_path: &str,
+) -> Result<String, AppError> {
+    let dir = join_checked(&state.roms_path, raw_path)?;
+    let mut dir_entries = fs::read_dir(&dir).await.map_err(|err| match err.kind() {
+        std::io::ErrorKind::NotFound => AppError::NotFound,
+        _ => AppError::Internal(err.to_string()),
+    })?;
+
+    let mut out = Vec::new();
+    while let Some(entry) = dir_entries
+        .next_entry()
+        .await
+        .map_err(|err| AppError::Internal(err.to_string()))?
+    {
+        let file_type = entry
+            .file_type()
+            .await
+            .map_err(|err| AppError::Internal(err.to_string()))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if file_type.is_dir() {
+            out.push(BrowseLink {
+                href: format!("/browse/{}", encode_path(&join_path(raw_path, &name))),
+                label: format!("{name}/"),
+            });
+        } else if file_type.is_file() && is_rom_file(&entry.path()) {
+            out.push(BrowseLink {
+                href: format!("/play/{}", encode_path(&join_path(raw_path, &name))),
+                label: name,
+            });
+        }
+    }
+    out.sort_by_key(|a| a.label.to_lowercase());
+
+    let mut rows = String::new();
+    if let Some(parent) = parent_href(raw_path) {
+        rows.push_str(&format!(
+            "<div class=\"row\"><a href=\"{}\">..</a></div>",
+            escape_html(&parent)
+        ));
+    }
+    for entry in out {
+        rows.push_str(&format!(
+            "<div class=\"row\"><a href=\"{}\">{}</a></div>",
+            escape_html(&entry.href),
+            escape_html(&entry.label)
+        ));
+    }
+
+    let title_text = if raw_path.is_empty() {
+        "Browse".to_string()
+    } else {
+        raw_path.to_string()
+    };
+    let path_text = if raw_path.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{raw_path}")
+    };
+
+    Ok(format!(
+        r#"<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Barecade - {title}</title>
+    <style>
+      body {{ font-family: sans-serif; margin: 1rem; }}
+      .toolbar {{ display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }}
+      .row a {{ display: block; padding: .25rem 0; }}
+      .path {{ color: #444; }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="toolbar">
+        <strong>Barecade</strong>
+        <span>{user}</span>
+        <form method="post" action="/logout">
+          <button type="submit">Log out</button>
+        </form>
+      </div>
+      <h1>{title}</h1>
+      <p class="path">{path_label}</p>
+      <section>{rows}</section>
+    </main>
+  </body>
+</html>"#,
+        title = escape_html(&title_text),
+        user = escape_html(&user.display_name),
+        path_label = escape_html(&path_text),
+        rows = rows,
+    ))
+}
+
+fn render_play_page(path: &str, core: &str, options: &EffectiveOptions) -> String {
+    let filter = match options.display_filter {
+        DisplayFilter::Pixelated => "pixelated",
+        DisplayFilter::Smooth => "smooth",
+        DisplayFilter::None => "none",
+    };
+    let integer_scaling = if options.integer_scaling { "1" } else { "0" };
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Barecade - {path}</title>
+    <style>
+      html, body {{ width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }}
+      #game {{ width: 100vw; height: 100vh; }}
+    </style>
+  </head>
+  <body data-path="{path}" data-core="{core}" data-filter="{filter}" data-integer-scaling="{integer_scaling}">
+    <div id="game"></div>
+    <script src="/player.js"></script>
+  </body>
+</html>"#,
+        path = escape_html(path),
+        core = escape_html(core),
+        filter = escape_html(filter),
+        integer_scaling = integer_scaling,
+    )
+}
+
+fn render_login_page(next: &str, error: Option<&str>) -> String {
+    let error_html = error
+        .map(|message| format!("<p class=\"error\">{}</p>", escape_html(message)))
+        .unwrap_or_default();
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Barecade - Login</title>
+    <style>
+      body {{ font-family: sans-serif; margin: 1rem; }}
+      label {{ display: block; margin: 0.5rem 0; }}
+      .error {{ color: #b00020; }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Barecade</h1>
+      {error_html}
+      <form method="post" action="/login">
+        <input type="hidden" name="next" value="{next}">
+        <label>Username <input name="username" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">Log in</button>
+      </form>
+    </main>
+  </body>
+</html>"#,
+        error_html = error_html,
+        next = escape_html(next),
+    )
+}
+
+#[derive(Debug)]
+struct BrowseLink {
+    href: String,
+    label: String,
+}
+
+fn parent_href(path: &str) -> Option<String> {
+    let parent = path.rsplit_once('/')?.0;
+    if parent.is_empty() {
+        Some("/browse/".to_string())
+    } else {
+        Some(format!("/browse/{}", encode_path(parent)))
+    }
+}
+
+fn join_path(base: &str, child: &str) -> String {
+    if base.is_empty() {
+        child.to_string()
+    } else {
+        format!("{base}/{child}")
+    }
+}
+
+fn escape_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn encode_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| urlencoding::encode(segment).into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 fn validate_system_path(path: &str) -> Result<(), AppError> {

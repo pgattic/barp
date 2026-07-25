@@ -13,24 +13,17 @@ cargo run -- --config config.example.json
 
 `config.example.json` shows the expected config shape. Password hash files must contain Argon2 PHC strings.
 
-## ROM Folders
+## ROM Browsing
 
-The first path segment selects the EmulatorJS core. This MVP recognizes:
+Browsing is plain filesystem browsing under `roms/`.
 
-- `nes`
-- `snes`
-- `gb`
-- `gbc`
-- `gba`
-- `n64`
+- `/browse/` shows the ROM root.
+- `/browse/<path>` browses `roms/<path>`.
+- `/play/<path>` opens `roms/<path>` in the player.
+
+The player still uses the first path segment to select the EmulatorJS core, so the selected ROM must live under a recognized top-level folder.
 
 Only recognized ROM extensions are shown by the browser.
-
-The frontend mirrors ROM-relative paths in the browser URL:
-
-- `/` shows the system folders.
-- `/nes` browses `roms/nes`.
-- `/nes/game.nes` opens `roms/nes/game.nes` in the player.
 
 ## EmulatorJS Assets
 
