@@ -93,6 +93,7 @@ window.EJS_onGameStart = async () => {
 window.EJS_ready = () => {
   window.EJS_emulator.on("exit", exitToBrowser);
   patchRetroArchConfig();
+  setupVirtualGamepadAutoHide();
 };
 
 window.addEventListener("resize", applyDisplay);
@@ -136,6 +137,52 @@ function patchRetroArchConfig() {
     return cfg;
   };
   GameManager.prototype.getRetroArchCfg.__barpPatched = true;
+}
+
+// Lemuroid-style: hide on-screen controls once a physical pad is used, and
+// bring them back on a screen touch. Hide-on-input (not connect) avoids ghost
+// devices that only report as connected.
+function setupVirtualGamepadAutoHide() {
+  const emu = window.EJS_emulator;
+  const gp = emu?.gamepad;
+  if (!gp?.listeners || typeof emu.toggleVirtualGamepad !== "function") return;
+
+  let hiddenByGamepad = false;
+
+  function hideFromGamepad() {
+    if (hiddenByGamepad) return;
+    if (emu.virtualGamepad?.style.display === "none") return;
+    hiddenByGamepad = true;
+    emu.toggleVirtualGamepad(false);
+  }
+
+  function showFromTouch(e) {
+    if (!hiddenByGamepad) return;
+    // Ignore touches that land on the EmulatorJS menu chrome.
+    if (e.target?.closest?.(".ejs_menu_bar, .ejs_settings_parent, .ejs_popup_container")) {
+      return;
+    }
+    hiddenByGamepad = false;
+    if (emu.getSettingValue?.("virtual-gamepad") !== "disabled") {
+      emu.toggleVirtualGamepad(true);
+    }
+  }
+
+  function wrap(event, before) {
+    const prev = gp.listeners[event];
+    gp.listeners[event] = (e) => {
+      before?.(e);
+      prev?.(e);
+    };
+  }
+
+  wrap("buttondown", hideFromGamepad);
+  wrap("axischanged", (e) => {
+    if (Math.abs(e.value || 0) > 0.5) hideFromGamepad();
+  });
+
+  const parent = emu.elements?.parent || document.querySelector("#game");
+  parent?.addEventListener("touchstart", showFromTouch, { passive: true });
 }
 
 function applyDisplay() {
