@@ -93,7 +93,9 @@ window.EJS_onGameStart = async () => {
 window.EJS_ready = () => {
   window.EJS_emulator.on("exit", exitToBrowser);
   patchRetroArchConfig();
+  applyPhysicalButtonLayout();
   setupVirtualGamepadAutoHide();
+  setupLeftStickAsDpad();
 };
 
 window.addEventListener("resize", applyDisplay);
@@ -137,6 +139,61 @@ function patchRetroArchConfig() {
     return cfg;
   };
   GameManager.prototype.getRetroArchCfg.__barpPatched = true;
+}
+
+function applyPhysicalButtonLayout() {
+  const emu = window.EJS_emulator;
+  if (!emu) return;
+
+  // EmulatorJS defaults to Xbox letter semantics (A on the bottom, B on the
+  // right). Map RetroPad buttons by position instead: B/A bottom/right and
+  // Y/X left/top, matching Nintendo-style layouts used by most older cores.
+  const faceButtons = {
+    0: "BUTTON_1", // B: bottom (DualShock cross)
+    1: "BUTTON_3", // Y: left   (DualShock square)
+    8: "BUTTON_2", // A: right  (DualShock circle)
+    9: "BUTTON_4", // X: top    (DualShock triangle)
+  };
+
+  for (const controls of [emu.defaultControllers?.[0], emu.controls?.[0]]) {
+    if (!controls) continue;
+    for (const [button, gamepadInput] of Object.entries(faceButtons)) {
+      controls[button] ??= {};
+      controls[button].value2 = gamepadInput;
+    }
+  }
+}
+
+// Browser gamepads are injected via EmulatorJS simulateInput, so RetroArch's
+// input_player*_analog_dpad_mode never sees the stick. Mirror left-stick
+// thresholds onto the D-pad buttons ourselves.
+function setupLeftStickAsDpad() {
+  const emu = window.EJS_emulator;
+  const gp = emu?.gamepad;
+  if (!gp?.listeners) return;
+
+  const prev = gp.listeners.axischanged;
+  gp.listeners.axischanged = (e) => {
+    prev?.(e);
+    if (!emu.started || !emu.gameManager?.simulateInput) return;
+    if (e.axis !== "LEFT_STICK_X" && e.axis !== "LEFT_STICK_Y") return;
+
+    const pad =
+      gp.gamepads.find((entry) => entry?.index === e.gamepadIndex) ||
+      gp.gamepads[e.gamepadIndex];
+    if (!pad) return;
+    const player = emu.gamepadSelection.indexOf(`${pad.id}_${pad.index}`);
+    if (player < 0) return;
+
+    const value = e.value || 0;
+    if (e.axis === "LEFT_STICK_X") {
+      emu.gameManager.simulateInput(player, 7, value > 0.5 ? 1 : 0); // RIGHT
+      emu.gameManager.simulateInput(player, 6, value < -0.5 ? 1 : 0); // LEFT
+    } else {
+      emu.gameManager.simulateInput(player, 5, value > 0.5 ? 1 : 0); // DOWN
+      emu.gameManager.simulateInput(player, 4, value < -0.5 ? 1 : 0); // UP
+    }
+  };
 }
 
 // Lemuroid-style: hide on-screen controls once a physical pad is used, and
