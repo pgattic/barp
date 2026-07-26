@@ -30,7 +30,6 @@
                 !(builtins.elem base [
                   "target"
                   "result"
-                  "state"
                   "saves"
                   "roms"
                   "secrets"

@@ -15,7 +15,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use rand::{rngs::OsRng, RngCore};
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use tokio::{fs, sync::Mutex};
@@ -44,7 +43,6 @@ pub(crate) struct AppState {
     pub(crate) saves_path: Arc<PathBuf>,
     pub(crate) emulatorjs_path: Arc<PathBuf>,
     pub(crate) systems: Arc<SystemRegistry>,
-    _session_secret: Arc<Vec<u8>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -121,12 +119,6 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
     fs::create_dir_all(&config.saves_path).await?;
     let saves_path = config.saves_path.canonicalize()?;
     let emulatorjs_path = validate_emulatorjs_path(&config.emulatorjs_path)?;
-    let state_path = config
-        .state_path
-        .clone()
-        .unwrap_or_else(|| config.saves_path.join(".barp-state"));
-    fs::create_dir_all(&state_path).await?;
-    let session_secret = load_or_create_secret(&state_path).await?;
     let systems = SystemRegistry::new(&emulatorjs_path, &config.system_mappings)?;
 
     let mut users = HashMap::new();
@@ -152,7 +144,6 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
         saves_path: Arc::new(saves_path),
         emulatorjs_path: Arc::new(emulatorjs_path),
         systems: Arc::new(systems),
-        _session_secret: Arc::new(session_secret),
     })
 }
 
@@ -194,17 +185,6 @@ async fn serve_emulatorjs(
 ) -> Result<Response, AppError> {
     let file = join_checked(&state.emulatorjs_path, &path)?;
     storage::stream_file(file, headers).await
-}
-
-async fn load_or_create_secret(state_path: &Path) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let path = state_path.join("session-secret");
-    if let Ok(secret) = fs::read(&path).await {
-        return Ok(secret);
-    }
-    let mut secret = vec![0_u8; 32];
-    OsRng.fill_bytes(&mut secret);
-    fs::write(path, &secret).await?;
-    Ok(secret)
 }
 
 async fn index(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {

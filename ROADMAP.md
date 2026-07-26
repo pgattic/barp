@@ -20,7 +20,6 @@ BARP = Boring Ahh ROM Player.
 - [ ] In-memory session map (no DB)
 - [ ] Session cookie: HttpOnly, SameSite=Lax
 - [ ] `POST /api/logout`
-- [ ] Session secret: generate on first boot, persist to StateDirectory
 - [ ] Sessions drop on restart — accepted behavior
 
 ## Phase 3 — Browsing & file serving

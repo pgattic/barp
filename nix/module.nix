@@ -44,7 +44,6 @@ let
   settings = {
     roms_path = toString cfg.romsPath;
     saves_path = toString cfg.savesPath;
-    state_path = toString cfg.statePath;
     emulatorjs_path = toString cfg.emulatorjsPackage;
     port = cfg.port;
     default_options = toJsonOptions cfg.defaultOptions;
@@ -80,12 +79,6 @@ in
       type = types.path;
       default = "/var/lib/barp/saves";
       description = "Directory for per-user save data.";
-    };
-
-    statePath = mkOption {
-      type = types.path;
-      default = "/var/lib/barp";
-      description = "Directory for BARP runtime state such as the session secret.";
     };
 
     port = mkOption {
@@ -195,10 +188,7 @@ in
         MemoryDenyWriteExecute = true;
 
         ReadOnlyPaths = [ cfg.romsPath cfg.emulatorjsPackage ] ++ passwordHashFiles;
-        ReadWritePaths = lib.unique [
-          cfg.savesPath
-          cfg.statePath
-        ];
+        ReadWritePaths = [ cfg.savesPath ];
       };
     };
   };

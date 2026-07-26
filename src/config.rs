@@ -8,8 +8,6 @@ pub(crate) struct Config {
     pub(crate) saves_path: PathBuf,
     /// Path to an EmulatorJS `data/` directory (contains `loader.js`).
     pub(crate) emulatorjs_path: PathBuf,
-    #[serde(default)]
-    pub(crate) state_path: Option<PathBuf>,
     #[serde(default = "default_port")]
     pub(crate) port: u16,
     #[serde(default)]
