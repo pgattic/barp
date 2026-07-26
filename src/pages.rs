@@ -175,7 +175,7 @@ pub(crate) fn render_play_page(
     <title>BARP - {path}</title>
     <style>
       html, body {{ width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }}
-      #game {{ width: 100vw; height: 100vh; }}
+      #game {{ width: 100%; height: 100dvh; }}
       #game .ejs_parent,
       #game .ejs_canvas_parent {{
         display: flex;

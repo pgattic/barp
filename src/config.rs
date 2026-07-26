@@ -28,7 +28,7 @@ pub(crate) struct Options {
     /// crisp; `true` allows smooth bilinear scaling.
     #[serde(default)]
     pub(crate) smooth: Option<bool>,
-    /// Size the canvas to an integer multiple of the core's native resolution.
+    /// Integer-scale the player canvas (RetroArch `video_scale_integer` + CSS).
     #[serde(default)]
     pub(crate) integer_scale: Option<bool>,
 }

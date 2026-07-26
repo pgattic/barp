@@ -61,9 +61,12 @@ those systems does not remove their upstream BIOS requirement.
 - `smooth` controls browser upscaling of the canvas (`false` = crisp pixels,
   `true` = bilinear). EmulatorJS itself hardcodes RetroArch `video_smooth`
   off; this option affects how the page scales that bitmap.
-- `integer_scale` sizes the canvas to an integer multiple of the core's
-  native resolution. EmulatorJS 4.2.3 has no built-in integer-scale setting,
-  so BARP applies this itself.
+- `integer_scale` turns on RetroArch `video_scale_integer` and sizes the
+  canvas to an integer multiple of the core framebuffer.
+- The player forces RetroArch `aspect_ratio_index` to 1:1 PAR (square pixels).
+  Without that, CRT-era cores (NES, SNES, Genesis, …) often default to a
+  non-square pixel aspect and look stretched; handhelds like GBC already use
+  1:1.
 
 ## EmulatorJS Assets
 

@@ -79,16 +79,20 @@ window.EJS_onLoadSave = async () => {
 
 // After the game is running, drop any existing battery save into the FS.
 window.EJS_onGameStart = async () => {
-  if (hasSave) {
-    await restoreSram();
+  try {
+    if (hasSave) {
+      await restoreSram();
+    }
+  } finally {
+    applyDisplay();
   }
-  applyDisplay();
 };
 
 // Register before GameManager adds its own exit cleanup. This lets us flush
 // and copy SRAM bytes before EmulatorJS unmounts its virtual filesystem.
 window.EJS_ready = () => {
   window.EJS_emulator.on("exit", exitToBrowser);
+  patchRetroArchConfig();
 };
 
 window.addEventListener("resize", applyDisplay);
@@ -115,6 +119,25 @@ function browseUrlFor(romPath) {
   return parent ? `/${encodePath(parent)}` : "/";
 }
 
+function patchRetroArchConfig() {
+  const GameManager = window.EJS_GameManager;
+  if (!GameManager?.prototype?.getRetroArchCfg) return;
+  if (GameManager.prototype.getRetroArchCfg.__barpPatched) return;
+
+  const original = GameManager.prototype.getRetroArchCfg;
+  GameManager.prototype.getRetroArchCfg = function patchedRetroArchCfg() {
+    let cfg = original.call(this);
+    // EmulatorJS/RetroArch default aspect_ratio_index is 22 (Core Provided).
+    // Many CRT-era cores then apply non-square PAR (e.g. fceumm "8:7 PAR"),
+    // which stretches pixels. 21 is 1:1 PAR (square pixels) for every core.
+    cfg += 'aspect_ratio_index = "21"\n';
+    cfg += "video_force_aspect = true\n";
+    cfg += `video_scale_integer = ${integerScale ? "true" : "false"}\n`;
+    return cfg;
+  };
+  GameManager.prototype.getRetroArchCfg.__barpPatched = true;
+}
+
 function applyDisplay() {
   const canvas = window.EJS_emulator?.canvas;
   if (!canvas) return;
@@ -123,32 +146,35 @@ function applyDisplay() {
   // how the canvas bitmap is upscaled to the page.
   canvas.style.imageRendering = smooth ? "auto" : "pixelated";
 
-  if (!integerScale) {
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
-    return;
-  }
+  const gm = window.EJS_emulator.gameManager;
+  // Use framebuffer width/height (1:1 pixels), not getVideoDimensions("aspect"),
+  // which follows the core's PAR and stays wrong even when RA is set to 1:1.
+  const nativeWidth = gm?.getVideoDimensions?.("width") || canvas.width || 0;
+  const nativeHeight = gm?.getVideoDimensions?.("height") || canvas.height || 0;
+  const box = document.querySelector("#game");
+  const maxWidth = box?.clientWidth || window.innerWidth;
+  const maxHeight = box?.clientHeight || window.innerHeight;
+  if (!nativeWidth || !nativeHeight || !maxWidth || !maxHeight) return;
 
-  const gameManager = window.EJS_emulator.gameManager;
-  const nativeWidth =
-    gameManager?.getVideoDimensions?.("width") || canvas.width || 0;
-  const nativeHeight =
-    gameManager?.getVideoDimensions?.("height") || canvas.height || 0;
-  if (!nativeWidth || !nativeHeight) {
-    canvas.style.width = "100%";
-    canvas.style.height = "100%";
-    return;
+  const aspect = nativeWidth / nativeHeight;
+  let width;
+  let height;
+  if (integerScale) {
+    const scale = Math.max(
+      1,
+      Math.floor(Math.min(maxWidth / nativeWidth, maxHeight / nativeHeight)),
+    );
+    width = nativeWidth * scale;
+    height = nativeHeight * scale;
+  } else if (maxWidth / maxHeight > aspect) {
+    height = maxHeight;
+    width = height * aspect;
+  } else {
+    width = maxWidth;
+    height = width / aspect;
   }
-
-  const parent = canvas.parentElement || document.querySelector("#game");
-  const maxWidth = parent?.clientWidth || window.innerWidth;
-  const maxHeight = parent?.clientHeight || window.innerHeight;
-  const scale = Math.max(
-    1,
-    Math.floor(Math.min(maxWidth / nativeWidth, maxHeight / nativeHeight)),
-  );
-  canvas.style.width = `${nativeWidth * scale}px`;
-  canvas.style.height = `${nativeHeight * scale}px`;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
 }
 
 async function putBytes(url, data) {
