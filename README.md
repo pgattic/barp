@@ -113,6 +113,12 @@ nix develop --builders '' --command scripts/vendor-emulatorjs.sh
 "emulatorjs_path": "./frontend/emulatorjs/data"
 ```
 
+## Packaging
+
+The flake builds BARP with [crane](https://crane.dev). Cargo dependencies are
+built once into a reusable `cargoArtifacts` derivation, so source-only changes
+(including frontend assets) do not recompile the whole crate graph.
+
 ## NixOS Module
 
 Import the flake module and declare users, ROM/save paths, and password hash
