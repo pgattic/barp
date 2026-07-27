@@ -160,3 +160,17 @@ Store the PHC string in a file (agenix, sops-nix, or a root-readable path) and
 point `passwordHashFile` at it. The module generates BARP's JSON config and
 runs a sandboxed systemd service with EmulatorJS provided by
 `packages.emulatorjs`.
+
+### Behind a Reverse Proxy
+
+Save states are uploaded as whole request bodies, and they get large fast: a few
+kilobytes for NES, several megabytes for mGBA, more for N64 and PSP. BARP accepts
+up to 64 MiB, so the proxy must not be stricter. With nginx:
+
+```nix
+services.nginx.clientMaxBodySize = "64m";
+```
+
+nginx's own default is 1 MB, and NixOS raises it only to 10 MB. Too low a limit
+shows up as save states that silently never persist while small `.srm` battery
+saves still work.

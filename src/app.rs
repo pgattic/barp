@@ -8,7 +8,7 @@ use std::{
 use anyhow::{ensure, Context};
 use argon2::password_hash::PasswordHash;
 use axum::{
-    extract::{Path as AxumPath, State},
+    extract::{DefaultBodyLimit, Path as AxumPath, State},
     http::{
         header::{self, HeaderMap, HeaderName, HeaderValue},
         StatusCode,
@@ -35,6 +35,11 @@ use crate::{
 #[folder = "frontend/"]
 #[exclude = "emulatorjs/*"]
 struct Assets;
+
+/// Axum caps request bodies at 2 MiB by default, which silently rejects save
+/// states from anything beefier than an 8-bit core (mGBA states run several
+/// megabytes; N64/PSP are larger still).
+const MAX_SAVE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -115,7 +120,9 @@ pub(crate) fn router(state: AppState) -> Router {
         .route("/api/roms/*path", get(storage::get_rom))
         .route(
             "/api/saves/*path",
-            get(storage::get_save).put(storage::put_save),
+            get(storage::get_save)
+                .put(storage::put_save)
+                .layer(DefaultBodyLimit::max(MAX_SAVE_BYTES)),
         )
         .route("/emulatorjs/data/*path", get(serve_emulatorjs))
         .route("/*path", get(content_or_asset))

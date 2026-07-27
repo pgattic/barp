@@ -26,6 +26,8 @@ const browseUrl = browseUrlFor(path);
 const sramFlushSeconds = 5;
 let lastSramWrite = Promise.resolve();
 let lastSramSignature = null;
+let pendingSramSignature = null;
+let sramWriteFailed = false;
 let sramFlushTimer = null;
 let exiting = false;
 
@@ -58,14 +60,28 @@ window.EJS_defaultOptions = {
 // Save-state button. Handler replaces EmulatorJS download/browser storage.
 // Payload is { screenshot, format, state } — only `state` is the bytes.
 window.EJS_onSaveState = async ({ state }) => {
-  await putBytes(stateUrl, state);
+  try {
+    await putBytes(stateUrl, state);
+    notify("SAVED STATE");
+  } catch (error) {
+    console.error(error);
+    notify(`Could not save state: ${error.message}`);
+  }
 };
 
 // Load-state button. Return value is ignored; we must inject the state ourselves.
 window.EJS_onLoadState = async () => {
-  const data = await getBytes(stateUrl);
-  if (data) {
+  try {
+    const data = await getBytes(stateUrl);
+    if (!data) {
+      notify("NO SAVED STATE");
+      return;
+    }
     window.EJS_emulator.gameManager.loadState(data);
+    notify("LOADED STATE");
+  } catch (error) {
+    console.error(error);
+    notify(`Could not load state: ${error.message}`);
   }
 };
 
@@ -335,12 +351,30 @@ function queueSramWrite(data) {
 
   // Cores rewrite the whole save file on every flush; only upload changes.
   const signature = sramSignature(body);
-  if (signature === lastSramSignature) return lastSramWrite;
-  lastSramSignature = signature;
+  if (signature === lastSramSignature || signature === pendingSramSignature) {
+    return lastSramWrite;
+  }
+  pendingSramSignature = signature;
 
   lastSramWrite = lastSramWrite
     .catch(() => {})
-    .then(() => putBytes(sramUrl, body));
+    .then(async () => {
+      try {
+        await putBytes(sramUrl, body);
+      } catch (error) {
+        // Leave the signature unrecorded so the next flush retries instead of
+        // deduplicating a save that never reached the server.
+        pendingSramSignature = null;
+        if (!sramWriteFailed) {
+          sramWriteFailed = true;
+          notify(`Could not store battery save: ${error.message}`);
+        }
+        throw error;
+      }
+      lastSramSignature = signature;
+      pendingSramSignature = null;
+      sramWriteFailed = false;
+    });
   return lastSramWrite;
 }
 
@@ -365,13 +399,20 @@ function exitToBrowser() {
     console.error("Could not flush save data on exit", error);
   }
 
+  // EmulatorJS unmounts its save filesystem and aborts the core right after
+  // this event, so retrying is impossible. Leave either way, and only warn.
   lastSramWrite
-    .then(() => location.assign(browseUrl))
     .catch((error) => {
-      exiting = false;
       console.error(error);
-      alert("Could not store save data. Please try exiting again.");
-    });
+      alert(
+        "BARP could not store this session's battery save, so recent progress may be lost.",
+      );
+    })
+    .then(() => location.assign(browseUrl));
+}
+
+function notify(message) {
+  window.EJS_emulator?.displayMessage?.(message);
 }
 
 async function getBytes(url) {
