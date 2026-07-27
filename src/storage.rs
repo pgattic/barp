@@ -58,6 +58,10 @@ async fn browse_impl(
     raw_path: &str,
 ) -> Result<impl axum::response::IntoResponse, AppError> {
     require_user(&state, &headers).await?;
+    if !raw_path.is_empty() {
+        // Nested browsing is only allowed under a recognized system folder.
+        validate_system_path(&state.systems, raw_path)?;
+    }
     let dir = join_checked(&state.roms_path, raw_path)?;
     let mut entries = fs::read_dir(&dir).await.map_err(|err| match err.kind() {
         io::ErrorKind::NotFound => AppError::NotFound,
@@ -72,7 +76,9 @@ async fn browse_impl(
             continue;
         }
         if file_type.is_dir() {
-            out.push(BrowseEntry { name, kind: "dir" });
+            if list_directory(&state.systems, raw_path, &name) {
+                out.push(BrowseEntry { name, kind: "dir" });
+            }
         } else if file_type.is_file()
             && state
                 .systems
@@ -194,6 +200,15 @@ pub(crate) fn encode_path(path: &str) -> String {
         .map(|segment| urlencoding::encode(segment).into_owned())
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// Top-level ROM folders are console roots; only recognized ones are listed.
+/// Nested directories under a recognized system are always listed.
+pub(crate) fn list_directory(registry: &SystemRegistry, browse_path: &str, name: &str) -> bool {
+    if !browse_path.is_empty() {
+        return true;
+    }
+    registry.for_folder(name).is_some()
 }
 
 pub(crate) fn validate_system_path<'a>(
@@ -374,6 +389,20 @@ mod tests {
         let registry = SystemRegistry::new(&emulatorjs_path, &HashMap::new()).unwrap();
         assert!(validate_system_path(&registry, "unknown/sonic.bin").is_err());
         assert!(validate_system_path(&registry, "genesis/sonic.bin").is_ok());
+    }
+
+    #[test]
+    fn root_browser_hides_unrecognized_system_folders() {
+        let emulatorjs_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/emulatorjs/data");
+        let registry = SystemRegistry::new(&emulatorjs_path, &HashMap::new()).unwrap();
+        assert!(list_directory(&registry, "", "nes"));
+        assert!(list_directory(&registry, "", "genesis"));
+        assert!(!list_directory(&registry, "", "Unknown Console"));
+        assert!(!list_directory(&registry, "", "bios"));
+        // Nested dirs under a recognized system stay visible.
+        assert!(list_directory(&registry, "nes", "Homebrew"));
+        assert!(list_directory(&registry, "nes", "anything"));
     }
 
     #[test]

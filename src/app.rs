@@ -271,7 +271,7 @@ async fn validate_rom_folders(path: &Path, systems: &SystemRegistry) -> anyhow::
         } else {
             warn!(
                 %folder,
-                "ROM folder has no system mapping and will not be playable"
+                "ROM folder has no system mapping; hiding from browser"
             );
         }
     }

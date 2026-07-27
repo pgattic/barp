@@ -6,7 +6,7 @@ use crate::{
     app::{AppError, AppState},
     auth::User,
     config::EffectiveOptions,
-    storage::{encode_path, join_checked},
+    storage::{encode_path, join_checked, list_directory, validate_system_path},
 };
 
 #[derive(Debug)]
@@ -21,6 +21,9 @@ pub(crate) async fn render_browse_page(
     user: &User,
     raw_path: &str,
 ) -> Result<String, AppError> {
+    if !raw_path.is_empty() {
+        validate_system_path(&state.systems, raw_path)?;
+    }
     let dir = join_checked(&state.roms_path, raw_path)?;
     let mut dir_entries = fs::read_dir(&dir).await.map_err(|err| match err.kind() {
         io::ErrorKind::NotFound => AppError::NotFound,
@@ -35,11 +38,13 @@ pub(crate) async fn render_browse_page(
             continue;
         }
         if file_type.is_dir() {
-            out.push(BrowseLink {
-                href: content_href(&join_path(raw_path, &name)),
-                label: format!("{name}/"),
-                is_dir: true,
-            });
+            if list_directory(&state.systems, raw_path, &name) {
+                out.push(BrowseLink {
+                    href: content_href(&join_path(raw_path, &name)),
+                    label: format!("{name}/"),
+                    is_dir: true,
+                });
+            }
         } else if file_type.is_file()
             && state
                 .systems
