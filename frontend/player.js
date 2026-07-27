@@ -21,7 +21,12 @@ const romUrl = `/api/roms/${encodePath(path)}`;
 const stateUrl = `/api/saves/${encodePath(`${savePath}.state1`)}`;
 const sramUrl = `/api/saves/${encodePath(`${savePath}.srm`)}`;
 const browseUrl = browseUrlFor(path);
+// Upload battery saves this often. Older EmulatorJS builds don't fire the
+// `saveSaveFiles` event, so BARP drives its own flush instead of relying on it.
+const sramFlushSeconds = 5;
 let lastSramWrite = Promise.resolve();
+let lastSramSignature = null;
+let sramFlushTimer = null;
 let exiting = false;
 
 window.EJS_player = "#game";
@@ -84,6 +89,7 @@ window.EJS_onGameStart = async () => {
       await restoreSram();
     }
   } finally {
+    startSramFlushTimer();
     applyDisplay();
   }
 };
@@ -93,6 +99,7 @@ window.EJS_onGameStart = async () => {
 window.EJS_ready = () => {
   window.EJS_emulator.on("exit", exitToBrowser);
   patchRetroArchConfig();
+  patchCoreSettingsFile();
   applyPhysicalButtonLayout();
   setupVirtualGamepadAutoHide();
   setupLeftStickAsDpad();
@@ -139,6 +146,16 @@ function patchRetroArchConfig() {
     return cfg;
   };
   GameManager.prototype.getRetroArchCfg.__barpPatched = true;
+}
+
+function patchCoreSettingsFile() {
+  const emu = window.EJS_emulator;
+  if (!emu || emu.getCoreSettings.__barpPatched) return;
+
+  // EmulatorJS writes getCoreSettings() into the core .opt file. Dumping
+  // EJS_defaultOptions there (shader, save slots, …) breaks parsing.
+  emu.getCoreSettings = () => "";
+  emu.getCoreSettings.__barpPatched = true;
 }
 
 function applyPhysicalButtonLayout() {
@@ -291,12 +308,49 @@ async function putBytes(url, data) {
   }
 }
 
+// Ask the core to flush battery RAM into its virtual save file, then upload it.
+function flushSram() {
+  const gameManager = window.EJS_emulator?.gameManager;
+  if (!gameManager?.getSaveFile) return lastSramWrite;
+
+  let data;
+  try {
+    data = gameManager.getSaveFile();
+  } catch (error) {
+    console.warn("Could not read battery save", error);
+    return lastSramWrite;
+  }
+  return queueSramWrite(data);
+}
+
+function startSramFlushTimer() {
+  if (sramFlushTimer !== null) return;
+  sramFlushTimer = setInterval(flushSram, sramFlushSeconds * 1000);
+}
+
 function queueSramWrite(data) {
   if (data == null) return lastSramWrite;
+  const body = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (body.byteLength === 0) return lastSramWrite;
+
+  // Cores rewrite the whole save file on every flush; only upload changes.
+  const signature = sramSignature(body);
+  if (signature === lastSramSignature) return lastSramWrite;
+  lastSramSignature = signature;
+
   lastSramWrite = lastSramWrite
     .catch(() => {})
-    .then(() => putBytes(sramUrl, data));
+    .then(() => putBytes(sramUrl, body));
   return lastSramWrite;
+}
+
+function sramSignature(bytes) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i += 1) {
+    hash ^= bytes[i];
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${bytes.length}:${hash >>> 0}`;
 }
 
 function exitToBrowser() {
