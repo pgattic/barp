@@ -37,7 +37,7 @@ window.EJS_Buttons = {
   playPause: true,
   restart: true,
   mute: true,
-  settings: false,
+  settings: true,
   fullscreen: true,
   saveState: true,
   loadState: true,
@@ -47,7 +47,7 @@ window.EJS_defaultOptions = {
   shader,
   "save-state-slot": 1,
   // Flush battery saves often enough that a short session still persists.
-  "save-save-interval": 30,
+  "save-save-interval": 5,
 };
 
 // Save-state button. Handler replaces EmulatorJS download/browser storage.
