@@ -22,6 +22,7 @@ use tokio::{
     sync::Mutex,
 };
 use tokio_util::io::ReaderStream;
+use tracing::info;
 
 use crate::{
     app::{AppError, AppState},
@@ -131,7 +132,12 @@ pub(crate) async fn put_save(
     let _guard = lock.lock().await;
     let save_path = user_save_path(&state, &user.username, &path)?;
     if let Some(parent) = save_path.parent() {
-        fs::create_dir_all(parent).await?;
+        fs::create_dir_all(parent).await.map_err(|err| {
+            AppError::Internal(format!(
+                "failed to create save directory {}: {err}",
+                parent.display()
+            ))
+        })?;
     }
     let tmp = save_path.with_extension(format!(
         "{}.tmp.{}",
@@ -141,8 +147,25 @@ pub(crate) async fn put_save(
             .unwrap_or("save"),
         new_token()
     ));
-    fs::write(&tmp, &body).await?;
-    fs::rename(&tmp, &save_path).await?;
+    fs::write(&tmp, &body).await.map_err(|err| {
+        AppError::Internal(format!(
+            "failed to write temporary save file {}: {err}",
+            tmp.display()
+        ))
+    })?;
+    if let Err(err) = fs::rename(&tmp, &save_path).await {
+        let _ = fs::remove_file(&tmp).await;
+        return Err(AppError::Internal(format!(
+            "failed to commit save file {}: {err}",
+            save_path.display()
+        )));
+    }
+    info!(
+        username = %user.username,
+        save = %path,
+        bytes = body.len(),
+        "save stored"
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 

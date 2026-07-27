@@ -13,6 +13,29 @@ cargo run -- --config config.example.json
 
 `config.example.json` shows the expected config shape. Password hash files must contain Argon2 PHC strings.
 
+## Command Line and Logs
+
+BARP serves `config.json` by default. Use `--config` to select another file:
+
+```sh
+barp --config /etc/barp/config.json
+barp hash-password             # read the password from stdin
+barp --help
+```
+
+Startup validates the config, ROM and EmulatorJS directories, password hashes,
+and save-directory writability before listening. Successful startup logs the
+resolved paths and configuration summary. Login attempts, completed save
+writes, request failures, shutdown, and startup errors are also logged to
+stderr, which systemd sends to the journal:
+
+```sh
+journalctl -u barp -f
+```
+
+The default level is `info`. Set `RUST_LOG` to adjust it, for example
+`RUST_LOG=barp=debug,tower_http=debug` to include every HTTP request.
+
 ## ROM Browsing
 
 Browsing follows the filesystem under `roms/`. A URL such as `/nes/` renders

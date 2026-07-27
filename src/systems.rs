@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::{anyhow, bail};
 use serde::Deserialize;
 
 #[derive(Clone, Debug)]
@@ -42,10 +43,10 @@ impl SystemRegistry {
     pub(crate) fn new(
         emulatorjs_path: &Path,
         additional_mappings: &HashMap<String, String>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<Self> {
         let cores_path = emulatorjs_path.join("cores/cores.json");
         let cores_text = std::fs::read_to_string(&cores_path).map_err(|err| {
-            format!(
+            anyhow!(
                 "failed to read EmulatorJS cores metadata at {}: {err}",
                 cores_path.display()
             )
@@ -72,7 +73,7 @@ impl SystemRegistry {
         let mut by_folder = HashMap::new();
         for builtin in builtin_systems() {
             let metadata = concrete.get(builtin.default_core).ok_or_else(|| {
-                format!(
+                anyhow!(
                     "EmulatorJS core metadata is missing {}",
                     builtin.default_core
                 )
@@ -92,7 +93,7 @@ impl SystemRegistry {
             validate_folder_name(folder)?;
             let system = by_target
                 .get(target)
-                .ok_or_else(|| format!("unknown EmulatorJS system or core: {target}"))?
+                .ok_or_else(|| anyhow!("unknown EmulatorJS system or core: {target}"))?
                 .clone();
             by_folder.insert(normalize_folder(folder), system);
         }
@@ -110,6 +111,10 @@ impl SystemRegistry {
             .and_then(|folder| self.for_folder(folder))
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.by_folder.len()
+    }
+
     pub(crate) fn supports_file(&self, system: &System, path: &Path) -> bool {
         path.extension()
             .and_then(|extension| extension.to_str())
@@ -121,7 +126,7 @@ fn normalize_folder(folder: &str) -> String {
     folder.to_lowercase()
 }
 
-fn validate_folder_name(folder: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn validate_folder_name(folder: &str) -> anyhow::Result<()> {
     let mut components = Path::new(folder).components();
     let valid = matches!(components.next(), Some(Component::Normal(_)))
         && components.next().is_none()
@@ -129,7 +134,7 @@ fn validate_folder_name(folder: &str) -> Result<(), Box<dyn std::error::Error>> 
     if valid {
         Ok(())
     } else {
-        Err(format!("invalid system folder mapping: {folder}").into())
+        bail!("invalid system folder mapping: {folder}")
     }
 }
 

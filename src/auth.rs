@@ -11,6 +11,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 
 use crate::{
     app::{AppError, AppState},
@@ -91,7 +92,9 @@ pub(crate) async fn logout_form(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
-    remove_session(&state, &headers).await;
+    if let Some(username) = remove_session(&state, &headers).await {
+        info!(%username, "user logged out");
+    }
     let mut response_headers = HeaderMap::new();
     response_headers.insert(header::SET_COOKIE, expired_cookie());
     (response_headers, Redirect::to("/login")).into_response()
@@ -122,7 +125,9 @@ pub(crate) async fn login(
 }
 
 pub(crate) async fn logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    remove_session(&state, &headers).await;
+    if let Some(username) = remove_session(&state, &headers).await {
+        info!(%username, "user logged out");
+    }
     let mut response_headers = HeaderMap::new();
     response_headers.insert(header::SET_COOKIE, expired_cookie());
     (response_headers, StatusCode::NO_CONTENT)
@@ -157,11 +162,23 @@ async fn authenticate_user(
     username: &str,
     password: &str,
 ) -> Result<User, AppError> {
-    let user = state.users.get(username).ok_or(AppError::Unauthorized)?;
-    let parsed_hash = PasswordHash::new(&user.password_hash).map_err(|_| AppError::Unauthorized)?;
-    Argon2::default()
+    let Some(user) = state.users.get(username) else {
+        warn!(%username, "login failed");
+        return Err(AppError::Unauthorized);
+    };
+    let parsed_hash = PasswordHash::new(&user.password_hash).map_err(|err| {
+        AppError::Internal(format!(
+            "configured password hash for user {username} became invalid: {err}"
+        ))
+    })?;
+    if Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
-        .map_err(|_| AppError::Unauthorized)?;
+        .is_err()
+    {
+        warn!(%username, "login failed");
+        return Err(AppError::Unauthorized);
+    }
+    info!(%username, "user logged in");
     Ok(user.clone())
 }
 
@@ -173,10 +190,9 @@ fn cookie_token(headers: &HeaderMap) -> Option<String> {
     })
 }
 
-async fn remove_session(state: &AppState, headers: &HeaderMap) {
-    if let Some(token) = cookie_token(headers) {
-        state.sessions.lock().await.remove(&token);
-    }
+async fn remove_session(state: &AppState, headers: &HeaderMap) -> Option<String> {
+    let token = cookie_token(headers)?;
+    state.sessions.lock().await.remove(&token)
 }
 
 fn expired_cookie() -> HeaderValue {

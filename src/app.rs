@@ -5,6 +5,8 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::{ensure, Context};
+use argon2::password_hash::PasswordHash;
 use axum::{
     extract::{Path as AxumPath, State},
     http::{
@@ -18,7 +20,8 @@ use axum::{
 use rust_embed::RustEmbed;
 use serde::Serialize;
 use tokio::{fs, sync::Mutex};
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
+use tracing::{error, info, warn, Level};
 
 use crate::{
     auth::{self, maybe_user, User},
@@ -67,14 +70,26 @@ impl From<io::Error> for AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status = match self {
+        let status = match &self {
             AppError::Unauthorized => StatusCode::UNAUTHORIZED,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::NotFound => StatusCode::NOT_FOUND,
             AppError::RangeNotSatisfiable => StatusCode::RANGE_NOT_SATISFIABLE,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        let message = self.to_string();
+        let message = match &self {
+            AppError::Internal(_) => "internal server error".to_string(),
+            _ => self.to_string(),
+        };
+        match &self {
+            AppError::Internal(detail) => {
+                error!(status = status.as_u16(), error = %detail, "request failed");
+            }
+            AppError::BadRequest(detail) => {
+                warn!(status = status.as_u16(), error = %detail, "invalid request");
+            }
+            _ => {}
+        }
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }
 }
@@ -104,26 +119,79 @@ pub(crate) fn router(state: AppState) -> Router {
         )
         .route("/emulatorjs/data/*path", get(serve_emulatorjs))
         .route("/*path", get(content_or_asset))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().level(Level::DEBUG))
+                .on_response(DefaultOnResponse::new().level(Level::DEBUG))
+                .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
+        )
         .with_state(state)
 }
 
-pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn std::error::Error>> {
-    let config_text = fs::read_to_string(config_path).await?;
-    let config: Config = serde_json::from_str(&config_text)?;
+pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
+    let config_text = fs::read_to_string(config_path)
+        .await
+        .with_context(|| format!("failed to read config file {}", config_path.display()))?;
+    let config: Config = serde_json::from_str(&config_text)
+        .with_context(|| format!("invalid JSON configuration in {}", config_path.display()))?;
+    ensure!(
+        !config.users.is_empty(),
+        "configuration must contain at least one user"
+    );
 
-    let roms_path = config.roms_path.canonicalize()?;
-    if !roms_path.is_dir() {
-        return Err(format!("roms_path is not a directory: {}", roms_path.display()).into());
-    }
-    fs::create_dir_all(&config.saves_path).await?;
-    let saves_path = config.saves_path.canonicalize()?;
+    let roms_path = config.roms_path.canonicalize().with_context(|| {
+        format!(
+            "roms_path could not be resolved ({})",
+            config.roms_path.display()
+        )
+    })?;
+    ensure!(
+        roms_path.is_dir(),
+        "roms_path is not a directory: {}",
+        roms_path.display()
+    );
+    let _roms = fs::read_dir(&roms_path)
+        .await
+        .with_context(|| format!("roms_path is not readable: {}", roms_path.display()))?;
+
+    fs::create_dir_all(&config.saves_path)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to create saves_path {}",
+                config.saves_path.display()
+            )
+        })?;
+    let saves_path = config.saves_path.canonicalize().with_context(|| {
+        format!(
+            "saves_path could not be resolved ({})",
+            config.saves_path.display()
+        )
+    })?;
+    verify_saves_writable(&saves_path).await?;
+
     let emulatorjs_path = validate_emulatorjs_path(&config.emulatorjs_path)?;
-    let systems = SystemRegistry::new(&emulatorjs_path, &config.system_mappings)?;
+    let systems = SystemRegistry::new(&emulatorjs_path, &config.system_mappings)
+        .context("failed to load EmulatorJS system registry")?;
+    validate_rom_folders(&roms_path, &systems).await?;
 
     let mut users = HashMap::new();
     for (username, user) in &config.users {
-        let password_hash = fs::read_to_string(&user.password_hash_file).await?;
+        validate_username(username)?;
+        let password_hash = fs::read_to_string(&user.password_hash_file)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to read password hash for user {username} from {}",
+                    user.password_hash_file.display()
+                )
+            })?;
+        let parsed_hash = PasswordHash::new(password_hash.trim())
+            .map_err(|err| anyhow::anyhow!("invalid password hash for user {username}: {err}"))?;
+        ensure!(
+            parsed_hash.algorithm.as_str().starts_with("argon2"),
+            "password hash for user {username} is not an Argon2 hash"
+        );
         users.insert(
             username.clone(),
             User {
@@ -134,6 +202,20 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
             },
         );
     }
+
+    let options = effective_options(&config.default_options);
+    info!(
+        roms_path = %roms_path.display(),
+        saves_path = %saves_path.display(),
+        emulatorjs_path = %emulatorjs_path.display(),
+        port = config.port,
+        users = users.len(),
+        systems = systems.len(),
+        shader = %options.shader,
+        smooth = options.smooth,
+        integer_scale = options.integer_scale,
+        "configuration validated"
+    );
 
     Ok(AppState {
         config: Arc::new(config),
@@ -147,33 +229,94 @@ pub(crate) async fn load_state(config_path: &Path) -> Result<AppState, Box<dyn s
     })
 }
 
-fn validate_emulatorjs_path(path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let emulatorjs_path = path.canonicalize().map_err(|err| {
+async fn verify_saves_writable(path: &Path) -> anyhow::Result<()> {
+    let probe = path.join(format!(".barp-write-test-{}", auth::new_token()));
+    fs::write(&probe, b"ok")
+        .await
+        .with_context(|| format!("saves_path is not writable: {}", path.display()))?;
+    fs::remove_file(&probe).await.with_context(|| {
         format!(
+            "saves_path write probe could not be removed: {}",
+            probe.display()
+        )
+    })?;
+    info!(saves_path = %path.display(), "save directory is writable");
+    Ok(())
+}
+
+async fn validate_rom_folders(path: &Path, systems: &SystemRegistry) -> anyhow::Result<()> {
+    let mut entries = fs::read_dir(path)
+        .await
+        .with_context(|| format!("failed to inspect roms_path {}", path.display()))?;
+    let mut recognized = 0_usize;
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .with_context(|| format!("failed to inspect roms_path {}", path.display()))?
+    {
+        let file_type = entry
+            .file_type()
+            .await
+            .with_context(|| format!("failed to inspect ROM entry {}", entry.path().display()))?;
+        if !file_type.is_dir() {
+            continue;
+        }
+        let folder = entry.file_name().to_string_lossy().to_string();
+        if folder.starts_with('.') {
+            continue;
+        }
+        if let Some(system) = systems.for_folder(&folder) {
+            recognized += 1;
+            tracing::debug!(%folder, core = %system.core, "recognized ROM folder");
+        } else {
+            warn!(
+                %folder,
+                "ROM folder has no system mapping and will not be playable"
+            );
+        }
+    }
+    info!(recognized, "ROM folders inspected");
+    Ok(())
+}
+
+fn validate_username(username: &str) -> anyhow::Result<()> {
+    ensure!(!username.is_empty(), "usernames must not be empty");
+    let path = Path::new(username);
+    ensure!(
+        path.components().count() == 1
+            && path
+                .components()
+                .next()
+                .is_some_and(|component| matches!(component, std::path::Component::Normal(_))),
+        "invalid username {username:?}: usernames must be a single path-safe component"
+    );
+    Ok(())
+}
+
+fn validate_emulatorjs_path(path: &Path) -> anyhow::Result<PathBuf> {
+    let emulatorjs_path = path.canonicalize().map_err(|err| {
+        anyhow::anyhow!(
             "emulatorjs_path could not be resolved ({}): {err}",
             path.display()
         )
     })?;
     if !emulatorjs_path.is_dir() {
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "emulatorjs_path is not a directory: {}",
             emulatorjs_path.display()
-        )
-        .into());
+        ));
     }
     if !emulatorjs_path.join("loader.js").is_file() {
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "emulatorjs_path is missing loader.js: {}",
             emulatorjs_path.display()
-        )
-        .into());
+        ));
     }
     if !emulatorjs_path.join("cores/cores.json").is_file() {
-        return Err(format!(
+        return Err(anyhow::anyhow!(
             "emulatorjs_path is missing cores/cores.json: {}",
             emulatorjs_path.display()
-        )
-        .into());
+        ));
     }
     Ok(emulatorjs_path)
 }
@@ -285,4 +428,30 @@ async fn content_page(state: &AppState, headers: &HeaderMap, path: &str) -> Resp
         );
     }
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn usernames_must_be_single_safe_path_components() {
+        assert!(validate_username("player1").is_ok());
+        assert!(validate_username("").is_err());
+        assert!(validate_username("../outside").is_err());
+        assert!(validate_username("/absolute").is_err());
+        assert!(validate_username("nested/player").is_err());
+    }
+
+    #[tokio::test]
+    async fn internal_errors_do_not_leak_details_to_clients() {
+        let response = AppError::Internal("/secret/path: permission denied".into()).into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("internal server error"));
+        assert!(!text.contains("/secret/path"));
+    }
 }
