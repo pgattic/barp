@@ -42,7 +42,10 @@ window.EJS_pathtodata = "/emulatorjs/data/";
 // Auto-start only for link navigations. Browser reload has no reliable
 // permission/gesture and often sticks on a gray screen until a click.
 window.EJS_startOnLoaded = navigationType() === "navigate";
-window.EJS_disableDatabases = true;
+// Keep EmulatorJS IndexedDB so cores (and small ROMs) are not re-downloaded
+// and decompressed on every visit. BARP still owns save/state persistence via
+// the save/load callbacks below.
+window.EJS_disableDatabases = false;
 window.EJS_threads = threads;
 window.EJS_Buttons = {
   playPause: true,
@@ -52,6 +55,7 @@ window.EJS_Buttons = {
   fullscreen: true,
   saveState: true,
   loadState: true,
+  cacheManager: false,
 };
 window.EJS_defaultOptions = {
   // EmulatorJS shader menu values: "disabled" or a built-in shader key.
