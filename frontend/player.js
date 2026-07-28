@@ -85,7 +85,8 @@ window.EJS_onLoadState = async () => {
   }
 };
 
-// Periodic / exit flush of battery RAM (and manual "Save SAV" button).
+// Bonus flush path. Released EmulatorJS loaders never register this event, so
+// BARP must never depend on it firing — see flushSram().
 window.EJS_onSaveSaveFiles = async (data) => {
   await queueSramWrite(data);
 };
@@ -122,6 +123,11 @@ window.EJS_ready = () => {
 };
 
 window.addEventListener("resize", applyDisplay);
+// Closing the tab skips the exit button entirely. PUTs use keepalive so this
+// last flush can still finish after the page goes away.
+window.addEventListener("pagehide", () => {
+  if (!exiting) flushSram();
+});
 
 const script = document.createElement("script");
 script.src = "/emulatorjs/data/loader.js";
@@ -391,17 +397,9 @@ function exitToBrowser() {
   if (exiting) return;
   exiting = true;
 
-  try {
-    // Flush the core's current battery save into its virtual save file.
-    // This synchronously fires EJS_onSaveSaveFiles, which queues the PUT.
-    window.EJS_emulator.gameManager.getSaveFile();
-  } catch (error) {
-    console.error("Could not flush save data on exit", error);
-  }
-
   // EmulatorJS unmounts its save filesystem and aborts the core right after
   // this event, so retrying is impossible. Leave either way, and only warn.
-  lastSramWrite
+  flushSram()
     .catch((error) => {
       console.error(error);
       alert(
