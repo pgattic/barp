@@ -24,6 +24,10 @@ const browseUrl = browseUrlFor(path);
 // Upload battery saves this often. Older EmulatorJS builds don't fire the
 // `saveSaveFiles` event, so BARP drives its own flush instead of relying on it.
 const sramFlushSeconds = 5;
+// Fetch rejects keepalive requests whose body exceeds 64 KiB with a bare
+// "Failed to fetch". Battery saves fit and are worth keeping alive across page
+// unload; save states are larger and are always sent from a live page.
+const keepaliveMaxBytes = 64 * 1024;
 let lastSramWrite = Promise.resolve();
 let lastSramSignature = null;
 let pendingSramSignature = null;
@@ -324,7 +328,11 @@ async function putBytes(url, data) {
   if (data == null) return;
   const body = data instanceof Uint8Array ? data : new Uint8Array(data);
   if (body.byteLength === 0) return;
-  const response = await fetch(url, { method: "PUT", body, keepalive: true });
+  const response = await fetch(url, {
+    method: "PUT",
+    body,
+    keepalive: body.byteLength <= keepaliveMaxBytes,
+  });
   if (!response.ok) {
     throw new Error(`Save failed (${response.status}): ${await response.text()}`);
   }
