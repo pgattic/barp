@@ -33,6 +33,7 @@ let lastSramSignature = null;
 let pendingSramSignature = null;
 let sramWriteFailed = false;
 let sramFlushTimer = null;
+let restoreFailed = false;
 let exiting = false;
 
 window.EJS_player = "#game";
@@ -104,7 +105,13 @@ window.EJS_onSaveSave = async ({ save }) => {
 
 // Manual "Load SAV" button — inject into the core's expected FS path.
 window.EJS_onLoadSave = async () => {
-  await restoreSram();
+  try {
+    await restoreSram();
+    notify("LOADED SAV");
+  } catch (error) {
+    console.error(error);
+    notify(`Could not load battery save: ${error.message}`);
+  }
 };
 
 // After the game is running, drop any existing battery save into the FS.
@@ -113,8 +120,17 @@ window.EJS_onGameStart = async () => {
     if (hasSave) {
       await restoreSram();
     }
+  } catch (error) {
+    restoreFailed = true;
+    console.error("Could not restore battery save", error);
   } finally {
-    startSramFlushTimer();
+    // Uploading now would replace a save we failed to restore with whatever
+    // blank state the core booted into.
+    if (restoreFailed) {
+      notify("Battery save could not be loaded — autosave is off this session");
+    } else {
+      startSramFlushTimer();
+    }
     applyDisplay();
   }
 };

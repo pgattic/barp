@@ -150,11 +150,10 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
             default_core: "beetle_vb",
             folders: &["vb", "virtualboy", "virtual-boy"],
         },
-        BuiltinSystem {
-            target: "nds",
-            default_core: "melonds",
-            folders: &["nds", "ds", "nintendo-ds"],
-        },
+        // Nintendo DS is deliberately absent. Its cores bind battery saves to
+        // the cartridge at load time, and EmulatorJS only exposes the save
+        // path after boot, so BARP cannot restore a save before the game
+        // starts. Map a folder to `melonds` explicitly to opt in anyway.
         BuiltinSystem {
             target: "arcade",
             default_core: "fbneo",
