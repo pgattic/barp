@@ -62,20 +62,20 @@ function buttonDown(pad, buttonIndex) {
   return !!button && (button.pressed || button.value > 0.5);
 }
 
-// Fire only on up→down. A button already held when this page loaded is ignored
-// until it is released and pressed again.
+// Fire only on a real up→down edge. The first sample after a page load only
+// arms the button, so a hold carried over from the previous page is ignored.
 function pressEdge(pad, name, down, action) {
   const key = `${pad.index}:${name}`;
-  const previously = wasDown.get(key) === true;
+  const previously = wasDown.get(key); // undefined | true | false
   wasDown.set(key, down);
-  if (down && !previously) action();
+  if (previously === undefined) return;
+  if (down && previously === false) action();
 }
 
-// Move on press, then repeat while held. Same "must see up first" rule as
-// pressEdge so a held d-pad across navigation does not keep scrolling.
+// Move on press, then repeat while held. Same unknown→down rule as pressEdge.
 function heldRepeat(pad, name, down, now, action) {
   const key = `${pad.index}:${name}`;
-  const previously = wasDown.get(key) === true;
+  const previously = wasDown.get(key); // undefined | true | false
   wasDown.set(key, down);
 
   if (!down) {
@@ -83,17 +83,19 @@ function heldRepeat(pad, name, down, now, action) {
     return;
   }
 
-  if (!previously) {
+  if (previously === undefined) {
+    // Held across the page load: wait for release before arming.
+    return;
+  }
+
+  if (previously === false) {
     hold.set(key, { since: now, repeated: false });
     action();
     return;
   }
 
   const state = hold.get(key);
-  if (!state) {
-    // Held across the page load: wait for release before arming.
-    return;
-  }
+  if (!state) return;
 
   const elapsed = now - state.since;
   const due = state.repeated
