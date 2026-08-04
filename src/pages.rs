@@ -135,12 +135,18 @@ pub(crate) async fn render_browse_page(
       }}
       .row:last-child a {{ border-bottom: 0; }}
       .row a:hover {{ background: var(--background); color: var(--accent); }}
+      .row a:focus {{
+        outline: none;
+        background: var(--background);
+        color: var(--accent);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }}
       .path {{ margin: 0 0 .5rem; color: var(--muted); }}
       .path a {{ color: inherit; text-decoration: none; }}
       .path a:hover {{ color: var(--accent); text-decoration: underline; }}
     </style>
   </head>
-  <body>
+  <body data-parent="{parent}">
     <main>
       <div class="toolbar">
         <strong>BARP</strong>
@@ -153,11 +159,13 @@ pub(crate) async fn render_browse_page(
       <p class="path">{crumbs}</p>
       <section>{rows}</section>
     </main>
+    <script src="/browse.js"></script>
   </body>
 </html>"#,
         user = escape_html(&user.display_name),
         crumbs = path_crumbs(raw_path),
         rows = rows,
+        parent = escape_html(&parent_href(raw_path)),
     ))
 }
 
@@ -288,6 +296,18 @@ pub(crate) fn content_href(path: &str) -> String {
     }
 }
 
+fn parent_href(path: &str) -> String {
+    let path = normalize_content_path(path);
+    if path.is_empty() {
+        return String::new();
+    }
+    let parent = path
+        .rsplit_once('/')
+        .map(|(head, _)| head)
+        .unwrap_or("");
+    content_href(parent)
+}
+
 pub(crate) fn normalize_content_path(path: &str) -> String {
     path.split('/')
         .filter(|segment| !segment.is_empty() && *segment != ".")
@@ -376,5 +396,13 @@ mod tests {
             path_crumbs("nes/Mario"),
             "<a href=\"/\">roms</a> / <a href=\"/nes\">nes</a> / <a href=\"/nes/Mario\">Mario</a>"
         );
+    }
+
+    #[test]
+    fn parent_href_walks_up_one_directory() {
+        assert_eq!(parent_href(""), "");
+        assert_eq!(parent_href("nes"), "/");
+        assert_eq!(parent_href("nes/Homebrew"), "/nes");
+        assert_eq!(parent_href("nes/Homebrew/pack"), "/nes/Homebrew");
     }
 }
