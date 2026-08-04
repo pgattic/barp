@@ -24,7 +24,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, Tr
 use tracing::{error, info, warn, Level};
 
 use crate::{
-    auth::{self, maybe_user, User},
+    auth::{self, maybe_user, LoginLimiter, User},
     config::{effective_options, merge_options, Config, EffectiveOptions},
     pages::{content_href, normalize_content_path, render_browse_page, render_play_page},
     storage::{self, join_checked, save_file_exists, save_path_for_rom, validate_play_path},
@@ -46,6 +46,7 @@ pub(crate) struct AppState {
     pub(crate) config: Arc<Config>,
     pub(crate) users: Arc<HashMap<String, User>>,
     pub(crate) sessions: Arc<Mutex<HashMap<String, String>>>,
+    pub(crate) login_limiter: Arc<LoginLimiter>,
     pub(crate) save_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     pub(crate) roms_path: Arc<PathBuf>,
     pub(crate) saves_path: Arc<PathBuf>,
@@ -57,6 +58,8 @@ pub(crate) struct AppState {
 pub(crate) enum AppError {
     #[error("unauthorized")]
     Unauthorized,
+    #[error("too many requests")]
+    TooManyRequests,
     #[error("bad request: {0}")]
     BadRequest(String),
     #[error("not found")]
@@ -77,6 +80,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match &self {
             AppError::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppError::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::NotFound => StatusCode::NOT_FOUND,
             AppError::RangeNotSatisfiable => StatusCode::RANGE_NOT_SATISFIABLE,
@@ -226,6 +230,7 @@ pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
         config: Arc::new(config),
         users: Arc::new(users),
         sessions: Arc::new(Mutex::new(HashMap::new())),
+        login_limiter: Arc::new(LoginLimiter::new()),
         save_locks: Arc::new(Mutex::new(HashMap::new())),
         roms_path: Arc::new(roms_path),
         saves_path: Arc::new(saves_path),

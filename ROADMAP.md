@@ -53,7 +53,7 @@ BARP = Boring Ahh ROM Player.
 - [ ] Keyboard fallback mapping
 
 ## Phase 7 — Hardening
-- [ ] Login rate limiting
+- [x] Login rate limiting
 - [x] Path sanitization (shared join/sanitize helpers + unit tests)
 - [x] systemd sandboxing: DynamicUser, ProtectSystem=strict, ReadOnlyPaths (roms), ReadWritePaths (saves)
 - [x] Fail loudly on missing/unreadable roms_path

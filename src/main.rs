@@ -83,7 +83,10 @@ async fn run(cli: Cli) -> Result<()> {
         .await
         .with_context(|| format!("failed to bind HTTP listener to {addr}"))?;
     info!(address = %addr, "BARP is ready");
-    axum::serve(listener, app)
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("HTTP server failed")?;
