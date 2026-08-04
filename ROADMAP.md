@@ -64,13 +64,13 @@ BARP = Boring Ahh ROM Player.
 - [x] `services.barp`: `enable`, `romsPath`, `savesPath`, `port`, `defaultOptions`, `users.<name>.{passwordHashFile, optionOverrides}`
 - [x] Generate config JSON from module options
 - [x] systemd unit with Phase 7 sandboxing
-- [x] Document mkpasswd/`barp hash-password` + agenix workflow
+- [x] Document argon2 CLI / argon2.online + agenix workflow
 - [x] Deployed: declare user → rebuild → login → saves persist
 
 ## Phase 9 — Rollout
 - [x] Point at real library, validate folder-name assumptions
 - [ ] Add household users
-- [ ] Verify mobile browser on real phone
+- [x] Verify mobile browser on real phone
 - [ ] Verify 2+ controller couch co-op on real hardware
 - [ ] README: backing up saves/ (folder conventions and adding users are partially documented)
 
@@ -83,8 +83,8 @@ BARP = Boring Ahh ROM Player.
 
 ## Non-Goals
 - Metadata scraping, box art, video previews
-- Database of any kind — filesystem + Nix config only
-- Admin UI for user management (Nix-declared only)
-- Per-user server-stored settings (Nix defaults + EmulatorJS localStorage)
+- Database of any kind — filesystem + config file only
+- Admin UI for user management (config-declared only)
+- Per-user server-stored settings (Config defaults + EmulatorJS localStorage)
 - Netplay (remote multiplayer) — extra always-on service, NAT/TURN complexity, known-flaky upstream; use Remote Play Together / Moonlight-Sunshine instead if ever needed
 - RetroAchievements / cloud sync beyond saves/ backups

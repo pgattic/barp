@@ -19,7 +19,6 @@ BARP serves `config.json` by default. Use `--config` to select another file:
 
 ```sh
 barp --config /etc/barp/config.json
-barp hash-password             # read the password from stdin
 barp --help
 ```
 
@@ -149,11 +148,27 @@ files:
 }
 ```
 
-Generate password hashes with:
+Generate Argon2id PHC password hashes with the [`argon2`](https://github.com/P-H-C/phc-winner-argon2)
+CLI or [argon2.online](https://argon2.online/). Use settings that match OWASP's
+minimum recommendation:
+
+| Option | Value |
+|--------|-------|
+| Variant | Argon2id |
+| Memory cost | `19456` KiB (19 MiB) |
+| Iterations | `2` |
+| Parallelism | `1` |
+| Hash length | `32` bytes |
+
+With the CLI (`-k` is memory in KiB; if your build only has `-m`, use `-m 15` for 32 MiB instead):
 
 ```sh
-nix run .#barp -- hash-password
+echo -n 'your-password' | argon2 "$(openssl rand -base64 12)" -id -t 2 -k 19456 -p 1 -l 32 -e
 ```
+
+On argon2.online, choose **Argon2id**, set the table values above, leave salt random,
+and copy the **encoded** output (the `$argon2id$v=19$...` string). Prefer the CLI
+for passwords you care about — a browser hash generator sees the plaintext.
 
 Store the PHC string in a file (agenix, sops-nix, or a root-readable path) and
 point `passwordHashFile` at it. The module generates BARP's JSON config and

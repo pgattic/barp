@@ -124,8 +124,9 @@ in
               passwordHashFile = mkOption {
                 type = types.path;
                 description = ''
-                  Path to a file containing an Argon2 PHC password hash.
-                  Generate one with `barp hash-password`.
+                  Path to a file containing an Argon2 PHC password hash
+                  (Argon2id recommended). See the README for argon2 CLI /
+                  argon2.online generator settings.
                 '';
               };
               optionOverrides = mkOption {
