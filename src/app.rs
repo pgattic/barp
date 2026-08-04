@@ -102,7 +102,6 @@ impl IntoResponse for AppError {
 #[derive(Debug, Serialize)]
 struct BootstrapResponse {
     username: String,
-    display_name: String,
     options: EffectiveOptions,
 }
 
@@ -203,7 +202,6 @@ pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
             username.clone(),
             User {
                 username: username.clone(),
-                display_name: user.display_name.clone(),
                 password_hash: password_hash.trim().to_owned(),
                 options: merge_options(&config.default_options, &user.option_overrides),
             },
@@ -375,7 +373,6 @@ async fn bootstrap(
     let user = auth::require_user(&state, &headers).await?;
     Ok(Json(BootstrapResponse {
         username: user.username.clone(),
-        display_name: user.display_name.clone(),
         options: effective_options(&user.options),
     }))
 }

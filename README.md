@@ -139,7 +139,6 @@ files:
             openFirewall = true;
             romsPath = "/var/lib/roms";
             users.player1 = {
-              displayName = "Player 1";
               passwordHashFile = "/run/agenix/barp-player1-hash";
             };
           };

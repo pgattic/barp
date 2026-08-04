@@ -7,78 +7,84 @@ BARP = Boring Ahh ROM Player.
 ---
 
 ## Phase 0 — Setup
-- [ ] `cargo new barp`, add deps: axum, tokio, serde/serde_json, argon2, tower-http, rust-embed
-- [ ] flake.nix dev shell
+- [x] `cargo new barp`, add deps: axum, tokio, serde/serde_json, argon2, tower-http, rust-embed
+- [x] flake.nix dev shell
 
 ## Phase 1 — Backend skeleton
-- [ ] Config struct: `roms_path`, `saves_path`, `port`, `default_options`, `system_mappings`, `users.<username>.{display_name, password_hash_file, option_overrides}`
-- [ ] Load config JSON at startup
-- [ ] `/healthz`, logging via `tracing`
+- [x] Config struct: `roms_path`, `saves_path`, `port`, `default_options`, `system_mappings`, `users.<username>.{password_hash_file, option_overrides}`
+- [x] Load config JSON at startup
+- [x] `/healthz`, logging via `tracing`
 
 ## Phase 2 — Auth & sessions
-- [ ] `POST /api/login` → issue session token
-- [ ] In-memory session map (no DB)
-- [ ] Session cookie: HttpOnly, SameSite=Lax
-- [ ] `POST /api/logout`
-- [ ] Sessions drop on restart — accepted behavior
+- [x] `POST /api/login` → issue session token
+- [x] In-memory session map (no DB)
+- [x] Session cookie: HttpOnly, SameSite=Lax
+- [x] `POST /api/logout`
+- [x] Sessions drop on restart — accepted behavior
 
 ## Phase 3 — Browsing & file serving
-- [ ] `GET /api/browse/*path` — list immediate children of a path (dirs + files), reflects filesystem as-is, any depth
+- [x] `GET /api/browse/*path` — list immediate children of a path (dirs + files), reflects filesystem as-is, any depth
   - response: `[{name, type: "dir" | "file"}]`
   - `path = ""` → top-level folders (systems)
-- [ ] System detection: `first_segment(path) -> EJS_core`, static lookup table in code (not Nix config), computed at launch time from a file's full path — not baked into browsing
-- [ ] `GET /api/roms/*path` — stream file bytes, range-request support
-- [ ] Path traversal guard shared by both routes (single sanitization helper)
-- [ ] Loud error on unrecognized first segment (no silent fallback)
+  - unrecognized top-level folders are hidden from the browser (startup still warns)
+- [x] System detection: `first_segment(path) -> EJS_core`, static lookup table in code (not Nix config), computed at launch time from a file's full path — not baked into browsing
+- [x] `GET /api/roms/*path` — stream file bytes, range-request support
+- [x] Path traversal guard shared by both routes (single sanitization helper)
+- [x] Loud error on unrecognized first segment (no silent fallback)
 
 ## Phase 4 — Saves (flat-file only)
-- [ ] Layout: `saves/<username>/*path` mirrors the ROM path with the ROM extension replaced by `.srm` or `.stateN`
-- [ ] Atomic write (tmp + rename), per-user lock
-- [ ] `GET/PUT /api/saves/*path`
-- [ ] No per-user config.json — settings are NOT stored server-side (see Phase 5)
+- [x] Layout: `saves/<username>/*path` mirrors the ROM path with the ROM extension replaced by `.srm` or `.stateN`
+- [x] Atomic write (tmp + rename), per-user lock
+- [x] `GET/PUT /api/saves/*path`
+- [x] No per-user config.json — settings are NOT stored server-side (see Phase 5)
 
 ## Phase 5 — Frontend shell
-- [ ] Login screen → system list → game list → EmulatorJS player
-- [ ] `GET /api/bootstrap` returns merged `default_options + this user's option_overrides` (from Nix config only)
-- [ ] On first page load, if no local settings key exists, seed localStorage from `/api/bootstrap`; after that, localStorage is authoritative and the UI never calls back to the server for settings
-- [ ] Custom trimmed settings panel (few options) using `EJS_Buttons` to hide EmulatorJS's default menu items
-- [ ] EmulatorJS save state calls wired to `/api/saves/...`
-- [ ] Build → embed BARP frontend via rust-embed; serve EmulatorJS from `emulatorjs_path`
+- [x] Login screen → system list → game list → EmulatorJS player
+- [x] `GET /api/bootstrap` returns merged `default_options + this user's option_overrides` (from Nix config only)
+- [x] Display options applied from Nix/config on each play page (shader / smooth / integer scale); EmulatorJS keeps its own localStorage for in-player settings
+- [x] Custom trimmed EmulatorJS chrome via `EJS_Buttons` (cache manager hidden; BARP owns save/load)
+- [x] EmulatorJS save state / battery save calls wired to `/api/saves/...`
+- [x] Build → embed BARP frontend via rust-embed; serve EmulatorJS from `emulatorjs_path`
+- [x] Gamepad navigation in the ROM browser
 
 ## Phase 6 — Input
-- [ ] Confirm touch controls work on mobile viewport
+- [x] Mobile viewport / touch controls (100dvh, virtual gamepad auto-hide when a physical pad is used)
 - [ ] Confirm multiple simultaneous gamepads map to player 1/2/3/4 (couch co-op) — expected to work out of the box via EmulatorJS + Gamepad API, verify on real controllers
 - [ ] Keyboard fallback mapping
 
 ## Phase 7 — Hardening
 - [ ] Login rate limiting
-- [ ] Path sanitization audit
-- [ ] systemd sandboxing: DynamicUser, ProtectSystem=strict, ReadOnlyPaths (roms), ReadWritePaths (saves)
-- [ ] Fail loudly on missing/unreadable roms_path
-- [ ] Regenerate user's saves dir if deleted externally, don't crash
+- [x] Path sanitization (shared join/sanitize helpers + unit tests)
+- [x] systemd sandboxing: DynamicUser, ProtectSystem=strict, ReadOnlyPaths (roms), ReadWritePaths (saves)
+- [x] Fail loudly on missing/unreadable roms_path
+- [x] Regenerate user's saves dir if deleted externally, don't crash (`create_dir_all` on write)
 
 ## Phase 8 — NixOS module
 - [x] Package via flake `crane` (cached cargo deps + separate EmulatorJS release package)
-- [x] `services.barp`: `enable`, `romsPath`, `savesPath`, `port`, `defaultOptions`, `users.<name>.{passwordHashFile, displayName, optionOverrides}`
+- [x] `services.barp`: `enable`, `romsPath`, `savesPath`, `port`, `defaultOptions`, `users.<name>.{passwordHashFile, optionOverrides}`
 - [x] Generate config JSON from module options
 - [x] systemd unit with Phase 7 sandboxing
 - [x] Document mkpasswd/`barp hash-password` + agenix workflow
-- [ ] Test: declare user → rebuild → login → saves persist across second rebuild
+- [x] Deployed: declare user → rebuild → login → saves persist
 
 ## Phase 9 — Rollout
-- [ ] Point at real library, validate folder-name assumptions
+- [x] Point at real library, validate folder-name assumptions
 - [ ] Add household users
 - [ ] Verify mobile browser on real phone
 - [ ] Verify 2+ controller couch co-op on real hardware
-- [ ] README: folder conventions, adding users, backing up saves/
+- [ ] README: backing up saves/ (folder conventions and adding users are partially documented)
 
 ---
+
+## Known limitations
+- Nintendo DS is not a built-in system (cart saves bind at load; EmulatorJS only exposes the path after boot)
+- PSP is built-in but EmulatorJS marks `ppsspp` as `save: false`
+- Systems that need BIOS still require you to supply firmware EmulatorJS cannot ship
 
 ## Non-Goals
 - Metadata scraping, box art, video previews
 - Database of any kind — filesystem + Nix config only
 - Admin UI for user management (Nix-declared only)
-- Per-user server-stored settings (localStorage only, seeded from Nix defaults)
+- Per-user server-stored settings (Nix defaults + EmulatorJS localStorage)
 - Netplay (remote multiplayer) — extra always-on service, NAT/TURN complexity, known-flaky upstream; use Remote Play Together / Moonlight-Sunshine instead if ever needed
 - RetroAchievements / cloud sync beyond saves/ backups
-

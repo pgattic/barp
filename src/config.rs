@@ -35,7 +35,6 @@ pub(crate) struct Options {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct UserConfig {
-    pub(crate) display_name: String,
     pub(crate) password_hash_file: PathBuf,
     #[serde(default)]
     pub(crate) option_overrides: Options,

@@ -161,7 +161,7 @@ pub(crate) async fn render_browse_page(
     <script src="/browse.js"></script>
   </body>
 </html>"#,
-        user = escape_html(&user.display_name),
+        user = escape_html(&user.username),
         crumbs = path_crumbs(raw_path),
         rows = rows,
         parent = escape_html(&parent_href(raw_path)),

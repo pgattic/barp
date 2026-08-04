@@ -50,7 +50,6 @@ let
     system_mappings = cfg.systemMappings;
     users = lib.mapAttrs (
       _username: user: {
-        display_name = user.displayName;
         password_hash_file = toString user.passwordHashFile;
         option_overrides = toJsonOptions user.optionOverrides;
       }
@@ -119,14 +118,9 @@ in
     users = mkOption {
       type = types.attrsOf (
         types.submodule (
-          { name, ... }:
+          { ... }:
           {
             options = {
-              displayName = mkOption {
-                type = types.str;
-                default = name;
-                description = "Display name shown in the UI.";
-              };
               passwordHashFile = mkOption {
                 type = types.path;
                 description = ''

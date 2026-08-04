@@ -24,7 +24,6 @@ const SESSION_COOKIE: &str = "barp_session";
 #[derive(Clone)]
 pub(crate) struct User {
     pub(crate) username: String,
-    pub(crate) display_name: String,
     pub(crate) password_hash: String,
     pub(crate) options: Options,
 }
@@ -52,7 +51,6 @@ pub(crate) struct NextQuery {
 #[derive(Debug, Serialize)]
 struct LoginResponse {
     username: String,
-    display_name: String,
 }
 
 pub(crate) async fn login_page(Query(query): Query<NextQuery>) -> Html<String> {
@@ -119,7 +117,6 @@ pub(crate) async fn login(
         headers,
         Json(LoginResponse {
             username: user.username,
-            display_name: user.display_name,
         }),
     ))
 }
