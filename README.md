@@ -11,7 +11,10 @@ nix develop --builders ''
 cargo run -- --config config.example.json
 ```
 
-`config.example.json` shows the expected config shape. Password hash files must contain Argon2 PHC strings.
+`config.example.json` shows the expected config shape. Each user must set
+exactly one of `password_hash` (inline Argon2 PHC string) or
+`password_hash_file` (path to a file containing that string). Prefer the file
+form for real deployments so hashes stay out of config and the Nix store.
 
 ## Command Line and Logs
 
@@ -170,9 +173,11 @@ On argon2.online, choose **Argon2id**, set the table values above, leave salt ra
 and copy the **encoded** output (the `$argon2id$v=19$...` string). Prefer the CLI
 for passwords you care about — a browser hash generator sees the plaintext.
 
-Store the PHC string in a file (agenix, sops-nix, or a root-readable path) and
-point `passwordHashFile` at it. The module generates BARP's JSON config and
-runs a sandboxed systemd service with EmulatorJS provided by
+Store the PHC string either inline as `password_hash` in `config.json`, or in a
+file (agenix, sops-nix, or a root-readable path) and point `passwordHashFile` /
+`password_hash_file` at it. The NixOS module only exposes the file option so
+hashes do not land in the world-readable Nix store. The module generates BARP's
+JSON config and runs a sandboxed systemd service with EmulatorJS provided by
 `packages.emulatorjs`.
 
 ### Behind a Reverse Proxy

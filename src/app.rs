@@ -25,7 +25,9 @@ use tracing::{error, info, warn, Level};
 
 use crate::{
     auth::{self, maybe_user, LoginLimiter, User},
-    config::{effective_options, merge_options, Config, EffectiveOptions},
+    config::{
+        effective_options, merge_options, Config, EffectiveOptions, PasswordHashSource, UserConfig,
+    },
     pages::{content_href, normalize_content_path, render_browse_page, render_play_page},
     storage::{self, join_checked, save_file_exists, save_path_for_rom, validate_play_path},
     systems::SystemRegistry,
@@ -188,25 +190,12 @@ pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
     let mut users = HashMap::new();
     for (username, user) in &config.users {
         validate_username(username)?;
-        let password_hash = fs::read_to_string(&user.password_hash_file)
-            .await
-            .with_context(|| {
-                format!(
-                    "failed to read password hash for user {username} from {}",
-                    user.password_hash_file.display()
-                )
-            })?;
-        let parsed_hash = PasswordHash::new(password_hash.trim())
-            .map_err(|err| anyhow::anyhow!("invalid password hash for user {username}: {err}"))?;
-        ensure!(
-            parsed_hash.algorithm.as_str().starts_with("argon2"),
-            "password hash for user {username} is not an Argon2 hash"
-        );
+        let password_hash = load_password_hash(username, user).await?;
         users.insert(
             username.clone(),
             User {
                 username: username.clone(),
-                password_hash: password_hash.trim().to_owned(),
+                password_hash,
                 options: merge_options(&config.default_options, &user.option_overrides),
             },
         );
@@ -237,6 +226,33 @@ pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
         emulatorjs_path: Arc::new(emulatorjs_path),
         systems: Arc::new(systems),
     })
+}
+
+async fn load_password_hash(username: &str, user: &UserConfig) -> anyhow::Result<String> {
+    let raw = match user.password_hash_source(username)? {
+        PasswordHashSource::Inline(hash) => hash,
+        PasswordHashSource::File(path) => fs::read_to_string(&path)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to read password hash for user {username} from {}",
+                    path.display()
+                )
+            })?
+            .trim()
+            .to_owned(),
+    };
+    ensure!(
+        !raw.is_empty(),
+        "password hash for user {username} must not be empty"
+    );
+    let parsed_hash = PasswordHash::new(&raw)
+        .map_err(|err| anyhow::anyhow!("invalid password hash for user {username}: {err}"))?;
+    ensure!(
+        parsed_hash.algorithm.as_str().starts_with("argon2"),
+        "password hash for user {username} is not an Argon2 hash"
+    );
+    Ok(raw)
 }
 
 async fn verify_saves_writable(path: &Path) -> anyhow::Result<()> {

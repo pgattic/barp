@@ -6,12 +6,15 @@
   "default_options": {
     "shader": "disabled",
     "smooth": false,
-    "integer_scale": false
+    "integer_scale": true
   },
   "system_mappings": {},
   "users": {
     "player1": {
-      "password_hash_file": "./secrets/player1.hash",
+      "password_hash": "$argon2id$v=19$m=16,t=2,p=1$WWdrVXJMWFJMb210SGUwWQ$txj1kT+CCHYfCGK7SDOmnw"
+    },
+    "player2": {
+      "password_hash_file": "./secrets/player2.hash",
       "option_overrides": {}
     }
   }
