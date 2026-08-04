@@ -141,7 +141,7 @@ pub(crate) async fn render_browse_page(
         color: var(--accent);
         box-shadow: inset 3px 0 0 var(--accent);
       }}
-      .path {{ margin: 0 0 .5rem; color: var(--muted); }}
+      .path {{ margin: .5rem 0 .65rem; color: var(--muted); }}
       .path a {{ color: inherit; text-decoration: none; }}
       .path a:hover {{ color: var(--accent); text-decoration: underline; }}
     </style>
@@ -155,7 +155,6 @@ pub(crate) async fn render_browse_page(
           <button type="submit">Log out</button>
         </form>
       </div>
-      <h1>Library</h1>
       <p class="path">{crumbs}</p>
       <section>{rows}</section>
     </main>
@@ -247,7 +246,6 @@ pub(crate) fn render_login_page(next: &str, error: Option<&str>) -> String {
         line-height: 1.5;
       }}
       main {{ width: min(24rem, calc(100% - 2rem)); }}
-      h1 {{ margin-top: 0; text-align: center; }}
       form {{
         padding: 1.25rem;
         border: 1px solid var(--border);
