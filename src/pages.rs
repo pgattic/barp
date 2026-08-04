@@ -99,13 +99,13 @@ pub(crate) async fn render_browse_page(
         font-family: system-ui, sans-serif;
         line-height: 1.5;
       }}
-      main {{ width: min(48rem, calc(100% - 2rem)); margin: 2rem auto; }}
-      h1 {{ margin: 2rem 0 .25rem; font-size: 1.75rem; }}
+      main {{ width: min(48rem, calc(100% - 1rem)); margin: .5rem auto; }}
+      h1 {{ margin: .5rem 0 0; font-size: 1.75rem; }}
       .toolbar {{
         display: flex;
         gap: 1rem;
         align-items: center;
-        padding-bottom: 1rem;
+        padding-bottom: .5rem;
         border-bottom: 1px solid var(--border);
       }}
       .toolbar strong {{ font-size: 1.15rem; }}
@@ -135,7 +135,7 @@ pub(crate) async fn render_browse_page(
       }}
       .row:last-child a {{ border-bottom: 0; }}
       .row a:hover {{ background: var(--background); color: var(--accent); }}
-      .path {{ margin: 0 0 1.25rem; color: var(--muted); }}
+      .path {{ margin: 0 0 .5rem; color: var(--muted); }}
       .path a {{ color: inherit; text-decoration: none; }}
       .path a:hover {{ color: var(--accent); text-decoration: underline; }}
     </style>
