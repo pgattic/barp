@@ -100,7 +100,6 @@ pub(crate) async fn render_browse_page(
         line-height: 1.5;
       }}
       main {{ width: min(48rem, calc(100% - 1rem)); margin: .5rem auto; }}
-      h1 {{ margin: .5rem 0 0; font-size: 1.75rem; }}
       .toolbar {{
         display: flex;
         gap: 1rem;
@@ -109,8 +108,8 @@ pub(crate) async fn render_browse_page(
         border-bottom: 1px solid var(--border);
       }}
       .toolbar strong {{ font-size: 1.15rem; }}
-      .toolbar span {{ color: var(--muted); }}
-      .toolbar form {{ margin-left: auto; }}
+      .toolbar span {{ margin-left: auto; color: var(--muted); }}
+      .toolbar form {{ margin: 0; }}
       button, input {{
         border: 1px solid var(--border);
         border-radius: .4rem;
@@ -246,6 +245,7 @@ pub(crate) fn render_login_page(next: &str, error: Option<&str>) -> String {
         line-height: 1.5;
       }}
       main {{ width: min(24rem, calc(100% - 2rem)); }}
+      h1 {{ margin-top: 0; text-align: center; }}
       form {{
         padding: 1.25rem;
         border: 1px solid var(--border);
