@@ -183,7 +183,7 @@ JSON config and runs a sandboxed systemd service with EmulatorJS provided by
 ### Behind a Reverse Proxy
 
 Save states are uploaded as whole request bodies, and they get large fast: a few
-kilobytes for NES, several megabytes for mGBA, more for N64 and PSP. BARP accepts
+kilobytes for NES, several megabytes for mGBA, more for N64. BARP accepts
 up to 64 MiB, so the proxy must not be stricter. With nginx:
 
 ```nix

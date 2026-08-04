@@ -154,6 +154,11 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
         // the cartridge at load time, and EmulatorJS only exposes the save
         // path after boot, so BARP cannot restore a save before the game
         // starts. Map a folder to `melonds` explicitly to opt in anyway.
+        //
+        // PSP is deliberately absent. EmulatorJS marks `ppsspp` as
+        // `save: false` (memory-stick saves, not a single .srm), so BARP
+        // cannot persist progress the way it does for other systems. Map a
+        // folder to `ppsspp` explicitly to opt in anyway.
         BuiltinSystem {
             target: "arcade",
             default_core: "fbneo",
@@ -297,11 +302,6 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
             target: "3do",
             default_core: "opera",
             folders: &["3do"],
-        },
-        BuiltinSystem {
-            target: "psp",
-            default_core: "ppsspp",
-            folders: &["psp"],
         },
         BuiltinSystem {
             target: "atari7800",
@@ -457,7 +457,6 @@ mod tests {
     #[test]
     fn carries_thread_requirements_from_core_metadata() {
         let registry = SystemRegistry::new(&test_emulatorjs_path(), &HashMap::new()).unwrap();
-        assert!(registry.for_folder("psp").unwrap().threads);
         assert!(registry.for_folder("dos").unwrap().threads);
         assert!(!registry.for_folder("nes").unwrap().threads);
     }

@@ -78,7 +78,7 @@ BARP = Boring Ahh ROM Player.
 
 ## Known limitations
 - Nintendo DS is not a built-in system (cart saves bind at load; EmulatorJS only exposes the path after boot)
-- PSP is built-in but EmulatorJS marks `ppsspp` as `save: false`
+- PSP is not a built-in system (EmulatorJS marks `ppsspp` as `save: false`; memory-stick saves are not a single `.srm`)
 - Systems that need BIOS still require you to supply firmware EmulatorJS cannot ship
 
 ## Non-Goals

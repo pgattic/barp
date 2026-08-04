@@ -40,7 +40,7 @@ struct Assets;
 
 /// Axum caps request bodies at 2 MiB by default, which silently rejects save
 /// states from anything beefier than an 8-bit core (mGBA states run several
-/// megabytes; N64/PSP are larger still).
+/// megabytes; N64 states are larger still).
 const MAX_SAVE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
