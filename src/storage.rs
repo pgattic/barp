@@ -1,7 +1,6 @@
 use std::{
     io,
     path::{Component, Path, PathBuf},
-    sync::Arc,
 };
 
 use axum::{
@@ -12,14 +11,11 @@ use axum::{
         StatusCode,
     },
     response::Response,
-    Json,
 };
 use bytes::Bytes;
-use serde::Serialize;
 use tokio::{
     fs,
     io::{AsyncReadExt, AsyncSeekExt, SeekFrom},
-    sync::Mutex,
 };
 use tokio_util::io::ReaderStream;
 use tracing::info;
@@ -29,72 +25,6 @@ use crate::{
     auth::{new_token, require_user},
     systems::{System, SystemRegistry},
 };
-
-#[derive(Debug, Serialize)]
-struct BrowseEntry {
-    name: String,
-    #[serde(rename = "type")]
-    kind: &'static str,
-}
-
-pub(crate) async fn browse_root(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<impl axum::response::IntoResponse, AppError> {
-    browse_impl(state, headers, "").await
-}
-
-pub(crate) async fn browse_path(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    AxumPath(path): AxumPath<String>,
-) -> Result<impl axum::response::IntoResponse, AppError> {
-    browse_impl(state, headers, &path).await
-}
-
-async fn browse_impl(
-    state: AppState,
-    headers: HeaderMap,
-    raw_path: &str,
-) -> Result<impl axum::response::IntoResponse, AppError> {
-    require_user(&state, &headers).await?;
-    if !raw_path.is_empty() {
-        // Nested browsing is only allowed under a recognized system folder.
-        validate_system_path(&state.systems, raw_path)?;
-    }
-    let dir = join_checked(&state.roms_path, raw_path)?;
-    let mut entries = fs::read_dir(&dir).await.map_err(|err| match err.kind() {
-        io::ErrorKind::NotFound => AppError::NotFound,
-        _ => err.into(),
-    })?;
-
-    let mut out = Vec::new();
-    while let Some(entry) = entries.next_entry().await? {
-        let file_type = entry.file_type().await?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with('.') {
-            continue;
-        }
-        if file_type.is_dir() {
-            if list_directory(&state.systems, raw_path, &name) {
-                out.push(BrowseEntry { name, kind: "dir" });
-            }
-        } else if file_type.is_file()
-            && state
-                .systems
-                .for_path(raw_path)
-                .is_some_and(|system| state.systems.supports_file(system, &entry.path()))
-        {
-            out.push(BrowseEntry { name, kind: "file" });
-        }
-    }
-    out.sort_by(|a, b| {
-        a.kind
-            .cmp(b.kind)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-    Ok(Json(out))
-}
 
 pub(crate) async fn get_rom(
     State(state): State<AppState>,
@@ -134,8 +64,6 @@ pub(crate) async fn put_save(
     if body.is_empty() {
         return Err(AppError::BadRequest("refusing to write empty save".into()));
     }
-    let lock = save_lock(&state, &user.username).await;
-    let _guard = lock.lock().await;
     let save_path = user_save_path(&state, &user.username, &path)?;
     if let Some(parent) = save_path.parent() {
         fs::create_dir_all(parent).await.map_err(|err| {
@@ -173,14 +101,6 @@ pub(crate) async fn put_save(
         "save stored"
     );
     Ok(StatusCode::NO_CONTENT)
-}
-
-async fn save_lock(state: &AppState, username: &str) -> Arc<Mutex<()>> {
-    let mut locks = state.save_locks.lock().await;
-    locks
-        .entry(username.to_owned())
-        .or_insert_with(|| Arc::new(Mutex::new(())))
-        .clone()
 }
 
 pub(crate) fn validate_play_path<'a>(
@@ -253,7 +173,10 @@ fn validate_save_path(path: &str) -> Result<(), AppError> {
         .last()
         .cloned()
         .ok_or_else(|| AppError::BadRequest("save path is empty".into()))?;
-    if name.ends_with(".srm") || name.contains(".state") {
+    let valid_state = name
+        .rsplit_once(".state")
+        .is_some_and(|(_, slot)| !slot.is_empty() && slot.chars().all(|c| c.is_ascii_digit()));
+    if name.ends_with(".srm") || valid_state {
         Ok(())
     } else {
         Err(AppError::BadRequest(
@@ -266,16 +189,6 @@ fn user_save_path(state: &AppState, username: &str, raw_path: &str) -> Result<Pa
     let mut base = (*state.saves_path).clone();
     base.push(username);
     join_checked(&base, raw_path)
-}
-
-pub(crate) async fn save_file_exists(state: &AppState, username: &str, raw_path: &str) -> bool {
-    match user_save_path(state, username, raw_path) {
-        Ok(path) => fs::metadata(path)
-            .await
-            .map(|metadata| metadata.is_file() && metadata.len() > 0)
-            .unwrap_or(false),
-        Err(_) => false,
-    }
 }
 
 pub(crate) async fn stream_file(path: PathBuf, headers: HeaderMap) -> Result<Response, AppError> {
@@ -411,6 +324,16 @@ mod tests {
         assert_eq!(parse_range("bytes=10-").unwrap(), (10, u64::MAX));
         assert!(parse_range("items=10-20").is_err());
         assert!(parse_range("bytes=-20").is_err());
+    }
+
+    #[test]
+    fn accepts_only_srm_and_numbered_state_paths() {
+        assert!(validate_save_path("nes/Game.srm").is_ok());
+        assert!(validate_save_path("nes/Game.state1").is_ok());
+        assert!(validate_save_path("nes/Game.state10").is_ok());
+        assert!(validate_save_path("nes/Game.state").is_err());
+        assert!(validate_save_path("nes/Game.state-old").is_err());
+        assert!(validate_save_path("nes/Game.state1.tmp").is_err());
     }
 
     #[test]

@@ -16,17 +16,15 @@ BARP = Boring Ahh ROM Player.
 - [x] `/healthz`, logging via `tracing`
 
 ## Phase 2 — Auth & sessions
-- [x] `POST /api/login` → issue session token
+- [x] Server-rendered login form → issue session token
 - [x] In-memory session map (no DB)
 - [x] Session cookie: HttpOnly, SameSite=Lax
-- [x] `POST /api/logout`
+- [x] Logout form
 - [x] Sessions drop on restart — accepted behavior
 
 ## Phase 3 — Browsing & file serving
-- [x] `GET /api/browse/*path` — list immediate children of a path (dirs + files), reflects filesystem as-is, any depth
-  - response: `[{name, type: "dir" | "file"}]`
-  - `path = ""` → top-level folders (systems)
-  - unrecognized top-level folders are hidden from the browser (startup still warns)
+- [x] Server-rendered browser reflects the filesystem as-is at any depth
+  - root shows recognized system folders; startup warns about hidden folders
 - [x] System detection: `first_segment(path) -> EJS_core`, static lookup table in code (not Nix config), computed at launch time from a file's full path — not baked into browsing
 - [x] `GET /api/roms/*path` — stream file bytes, range-request support
 - [x] Path traversal guard shared by both routes (single sanitization helper)
@@ -34,13 +32,13 @@ BARP = Boring Ahh ROM Player.
 
 ## Phase 4 — Saves (flat-file only)
 - [x] Layout: `saves/<username>/*path` mirrors the ROM path with the ROM extension replaced by `.srm` or `.stateN`
-- [x] Atomic write (tmp + rename), per-user lock
+- [x] Atomic write (unique tmp file + rename)
 - [x] `GET/PUT /api/saves/*path`
 - [x] No per-user config.json — settings are NOT stored server-side (see Phase 5)
 
 ## Phase 5 — Frontend shell
 - [x] Login screen → system list → game list → EmulatorJS player
-- [x] `GET /api/bootstrap` returns merged `default_options + this user's option_overrides` (from Nix config only)
+- [x] Resolve `default_options + this user's option_overrides` at startup
 - [x] Display options applied from Nix/config on each play page (shader / smooth / integer scale); EmulatorJS keeps its own localStorage for in-player settings
 - [x] Custom trimmed EmulatorJS chrome via `EJS_Buttons` (cache manager hidden; BARP owns save/load)
 - [x] EmulatorJS save state / battery save calls wired to `/api/saves/...`

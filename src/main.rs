@@ -51,7 +51,7 @@ fn init_tracing() {
 async fn run(cli: Cli) -> Result<()> {
     info!(config = %cli.config.display(), "loading configuration");
     let state = load_state(&cli.config).await?;
-    let addr = SocketAddr::from(([0, 0, 0, 0], state.config.port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], state.port));
     let app = router(state);
 
     let listener = tokio::net::TcpListener::bind(addr)

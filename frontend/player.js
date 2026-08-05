@@ -1,15 +1,12 @@
-const params = new URLSearchParams(location.search);
 const dataset = document.body.dataset;
 
-const path = dataset.path || params.get("path");
-const savePath = dataset.savePath || params.get("savePath");
-const core = dataset.core || params.get("core");
-const shader = dataset.shader || params.get("shader") || "disabled";
-const smooth = (dataset.smooth || params.get("smooth") || "0") === "1";
-const integerScale =
-  (dataset.integerScale || params.get("integerScale") || "0") === "1";
-const hasSave = (dataset.hasSave || params.get("hasSave") || "0") === "1";
-const threads = (dataset.threads || params.get("threads") || "0") === "1";
+const path = dataset.path;
+const savePath = dataset.savePath;
+const core = dataset.core;
+const shader = dataset.shader || "disabled";
+const smooth = (dataset.smooth || "0") === "1";
+const integerScale = (dataset.integerScale || "0") === "1";
+const threads = (dataset.threads || "0") === "1";
 
 if (!path || !savePath || !core) {
   document.body.textContent = "Missing emulator parameters.";
@@ -21,9 +18,6 @@ const romUrl = `/api/roms/${encodePath(path)}`;
 const stateUrl = `/api/saves/${encodePath(`${savePath}.state1`)}`;
 const sramUrl = `/api/saves/${encodePath(`${savePath}.srm`)}`;
 const browseUrl = browseUrlFor(path);
-// Upload battery saves this often. Older EmulatorJS builds don't fire the
-// `saveSaveFiles` event, so BARP drives its own flush instead of relying on it.
-const sramFlushSeconds = 5;
 // Fetch rejects keepalive requests whose body exceeds 64 KiB with a bare
 // "Failed to fetch". Battery saves fit and are worth keeping alive across page
 // unload; save states are larger and are always sent from a live page.
@@ -32,7 +26,6 @@ let lastSramWrite = Promise.resolve();
 let lastSramSignature = null;
 let pendingSramSignature = null;
 let sramWriteFailed = false;
-let sramFlushTimer = null;
 let restoreFailed = false;
 let exiting = false;
 
@@ -43,10 +36,6 @@ window.EJS_pathtodata = "/emulatorjs/data/";
 // Auto-start only for link navigations. Browser reload has no reliable
 // permission/gesture and often sticks on a gray screen until a click.
 window.EJS_startOnLoaded = navigationType() === "navigate";
-// Keep EmulatorJS IndexedDB so cores (and small ROMs) are not re-downloaded
-// and decompressed on every visit. BARP still owns save/state persistence via
-// the save/load callbacks below.
-window.EJS_disableDatabases = false;
 window.EJS_threads = threads;
 window.EJS_Buttons = {
   playPause: true,
@@ -56,6 +45,8 @@ window.EJS_Buttons = {
   fullscreen: true,
   saveState: true,
   loadState: true,
+  saveSavFiles: false,
+  loadSavFiles: false,
   cacheManager: false,
 };
 window.EJS_defaultOptions = {
@@ -94,32 +85,10 @@ window.EJS_onLoadState = async () => {
   }
 };
 
-// Bonus flush path. Released EmulatorJS loaders never register this event, so
-// BARP must never depend on it firing — see flushSram().
-window.EJS_onSaveSaveFiles = async (data) => {
-  await queueSramWrite(data);
-};
-window.EJS_onSaveSave = async ({ save }) => {
-  await queueSramWrite(save);
-};
-
-// Manual "Load SAV" button — inject into the core's expected FS path.
-window.EJS_onLoadSave = async () => {
-  try {
-    await restoreSram();
-    notify("LOADED SAV");
-  } catch (error) {
-    console.error(error);
-    notify(`Could not load battery save: ${error.message}`);
-  }
-};
-
 // After the game is running, drop any existing battery save into the FS.
 window.EJS_onGameStart = async () => {
   try {
-    if (hasSave) {
-      await restoreSram();
-    }
+    await restoreSram();
   } catch (error) {
     restoreFailed = true;
     console.error("Could not restore battery save", error);
@@ -128,9 +97,8 @@ window.EJS_onGameStart = async () => {
     // blank state the core booted into.
     if (restoreFailed) {
       notify("Battery save could not be loaded — autosave is off this session");
-    } else {
-      startSramFlushTimer();
     }
+    applyPhysicalButtonLayout();
     applyDisplay();
   }
 };
@@ -138,10 +106,13 @@ window.EJS_onGameStart = async () => {
 // Register before GameManager adds its own exit cleanup. This lets us flush
 // and copy SRAM bytes before EmulatorJS unmounts its virtual filesystem.
 window.EJS_ready = () => {
-  window.EJS_emulator.on("exit", exitToBrowser);
+  const emu = window.EJS_emulator;
+  emu.on("exit", exitToBrowser);
+  emu.on("saveSaveFiles", (data) => {
+    if (!restoreFailed) queueSramWrite(data).catch(console.error);
+  });
   patchRetroArchConfig();
   patchCoreSettingsFile();
-  applyPhysicalButtonLayout();
   setupVirtualGamepadAutoHide();
   setupLeftStickAsDpad();
 };
@@ -218,11 +189,14 @@ function applyPhysicalButtonLayout() {
     9: "BUTTON_4", // X: top    (DualShock triangle)
   };
 
-  for (const controls of [emu.defaultControllers?.[0], emu.controls?.[0]]) {
-    if (!controls) continue;
-    for (const [button, gamepadInput] of Object.entries(faceButtons)) {
-      controls[button] ??= {};
-      controls[button].value2 = gamepadInput;
+  for (const controllerSet of [emu.defaultControllers, emu.controls]) {
+    if (!controllerSet) continue;
+    for (const controls of Object.values(controllerSet)) {
+      if (!controls) continue;
+      for (const [button, gamepadInput] of Object.entries(faceButtons)) {
+        controls[button] ??= {};
+        controls[button].value2 = gamepadInput;
+      }
     }
   }
 }
@@ -373,11 +347,6 @@ function flushSram() {
   return queueSramWrite(data);
 }
 
-function startSramFlushTimer() {
-  if (sramFlushTimer !== null) return;
-  sramFlushTimer = setInterval(flushSram, sramFlushSeconds * 1000);
-}
-
 function queueSramWrite(data) {
   if (data == null) return lastSramWrite;
   const body = data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -398,7 +367,9 @@ function queueSramWrite(data) {
       } catch (error) {
         // Leave the signature unrecorded so the next flush retries instead of
         // deduplicating a save that never reached the server.
-        pendingSramSignature = null;
+        if (pendingSramSignature === signature) {
+          pendingSramSignature = null;
+        }
         if (!sramWriteFailed) {
           sramWriteFailed = true;
           notify(`Could not store battery save: ${error.message}`);
@@ -406,7 +377,9 @@ function queueSramWrite(data) {
         throw error;
       }
       lastSramSignature = signature;
-      pendingSramSignature = null;
+      if (pendingSramSignature === signature) {
+        pendingSramSignature = null;
+      }
       sramWriteFailed = false;
     });
   return lastSramWrite;
@@ -456,25 +429,8 @@ async function restoreSram() {
 
   const gameManager = window.EJS_emulator?.gameManager;
   const savePath = gameManager?.getSaveFilePath?.();
-  const fs = gameManager?.FS;
-  if (!savePath || !fs) return;
+  if (!savePath || !gameManager?.writeFile) return;
 
-  ensureParentDirectories(fs, savePath);
-  if (fs.analyzePath(savePath).exists) {
-    fs.unlink(savePath);
-  }
-  fs.writeFile(savePath, data);
+  gameManager.writeFile(savePath, data);
   gameManager.loadSaveFiles();
-}
-
-function ensureParentDirectories(fs, filePath) {
-  const parts = filePath.split("/");
-  let current = "";
-  for (let i = 0; i < parts.length - 1; i += 1) {
-    if (!parts[i]) continue;
-    current += `/${parts[i]}`;
-    if (!fs.analyzePath(current).exists) {
-      fs.mkdir(current);
-    }
-  }
 }

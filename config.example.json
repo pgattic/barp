@@ -6,7 +6,7 @@
   "default_options": {
     "shader": "disabled",
     "smooth": false,
-    "integer_scale": true
+    "integer_scale": false
   },
   "system_mappings": {},
   "users": {

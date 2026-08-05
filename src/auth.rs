@@ -12,17 +12,16 @@ use axum::{
         StatusCode,
     },
     response::{Html, IntoResponse, Redirect},
-    Json,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use rand::{rngs::OsRng, RngCore};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
 use crate::{
     app::{AppError, AppState},
-    config::Options,
+    config::EffectiveOptions,
     pages::{content_href, render_login_page},
 };
 
@@ -37,7 +36,7 @@ const LOGIN_WINDOW: Duration = Duration::from_secs(15 * 60);
 pub(crate) struct User {
     pub(crate) username: String,
     pub(crate) password_hash: String,
-    pub(crate) options: Options,
+    pub(crate) options: EffectiveOptions,
 }
 
 /// Tracks failed logins by client IP and username.
@@ -131,11 +130,7 @@ fn client_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
         .get("x-forwarded-for")
         .and_then(|value| value.to_str().ok())
     {
-        if let Some(ip) = xff
-            .split(',')
-            .map(str::trim)
-            .rfind(|part| !part.is_empty())
-        {
+        if let Some(ip) = xff.split(',').map(str::trim).rfind(|part| !part.is_empty()) {
             return ip.to_owned();
         }
     }
@@ -151,12 +146,6 @@ fn client_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct LoginRequest {
-    username: String,
-    password: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub(crate) struct LoginForm {
     username: String,
     password: String,
@@ -168,11 +157,6 @@ pub(crate) struct LoginForm {
 pub(crate) struct NextQuery {
     #[serde(default)]
     pub(crate) next: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct LoginResponse {
-    username: String,
 }
 
 pub(crate) async fn login_page(Query(query): Query<NextQuery>) -> Html<String> {
@@ -229,40 +213,6 @@ pub(crate) async fn logout_form(
     let mut response_headers = HeaderMap::new();
     response_headers.insert(header::SET_COOKIE, expired_cookie());
     (response_headers, Redirect::to("/login")).into_response()
-}
-
-pub(crate) async fn login(
-    State(state): State<AppState>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    headers: HeaderMap,
-    Json(request): Json<LoginRequest>,
-) -> Result<impl IntoResponse, AppError> {
-    let ip = client_ip(&headers, peer);
-    let user = attempt_login(&state, &ip, &request.username, &request.password).await?;
-    let token = new_token();
-    state
-        .sessions
-        .lock()
-        .await
-        .insert(token.clone(), user.username.clone());
-
-    let mut headers = HeaderMap::new();
-    headers.insert(header::SET_COOKIE, session_cookie_value(&token));
-    Ok((
-        headers,
-        Json(LoginResponse {
-            username: user.username,
-        }),
-    ))
-}
-
-pub(crate) async fn logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
-    if let Some(username) = remove_session(&state, &headers).await {
-        info!(%username, "user logged out");
-    }
-    let mut response_headers = HeaderMap::new();
-    response_headers.insert(header::SET_COOKIE, expired_cookie());
-    (response_headers, StatusCode::NO_CONTENT)
 }
 
 pub(crate) async fn require_user(state: &AppState, headers: &HeaderMap) -> Result<User, AppError> {
@@ -352,7 +302,10 @@ async fn remove_session(state: &AppState, headers: &HeaderMap) -> Option<String>
 }
 
 fn expired_cookie() -> HeaderValue {
-    HeaderValue::from_static("barp_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/")
+    HeaderValue::from_str(&format!(
+        "{SESSION_COOKIE}=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/"
+    ))
+    .expect("session cookie is ASCII")
 }
 
 fn session_cookie_value(token: &str) -> HeaderValue {
@@ -372,7 +325,7 @@ fn sanitize_next(next: Option<&str>) -> String {
     let Some(next) = next else {
         return "/".to_string();
     };
-    if next.starts_with('/') && !next.contains("://") {
+    if next.starts_with('/') && !next.starts_with("//") && !next.contains("://") {
         next.to_string()
     } else {
         content_href("")
@@ -412,5 +365,12 @@ mod tests {
         );
         let peer = "127.0.0.1:3000".parse().unwrap();
         assert_eq!(client_ip(&headers, peer), "10.0.0.5");
+    }
+
+    #[test]
+    fn only_accepts_local_redirect_targets() {
+        assert_eq!(sanitize_next(Some("/nes/game.nes")), "/nes/game.nes");
+        assert_eq!(sanitize_next(Some("//example.com")), "/");
+        assert_eq!(sanitize_next(Some("https://example.com")), "/");
     }
 }

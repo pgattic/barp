@@ -18,25 +18,17 @@
         "aarch64-linux"
       ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f system);
-    in
-    {
-      packages = forAllSystems (
+      cargoPackage = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package;
+      mkBuildContext =
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          inherit (pkgs) lib;
           craneLib = crane.mkLib pkgs;
-
-          # Dependency builds only need Cargo sources. Keep frontend/fixtures
-          # out so editing UI/tests does not invalidate the dep cache.
           cargoSrc = craneLib.cleanCargoSource ./.;
-
-          # Final package needs frontend/ for rust-embed and tests/fixtures for
-          # unit tests that load EmulatorJS core metadata.
-          src = lib.cleanSourceWith {
+          src = pkgs.lib.cleanSourceWith {
             src = ./.;
             filter =
-              path: type:
+              path: _type:
               let
                 base = baseNameOf path;
               in
@@ -49,19 +41,40 @@
                 ".direnv"
               ]);
           };
-
           commonArgs = {
-            pname = "barp";
-            version = "0.1.0";
+            pname = cargoPackage.name;
+            version = cargoPackage.version;
             strictDeps = true;
           };
-
           cargoArtifacts = craneLib.buildDepsOnly (
             commonArgs
             // {
               src = cargoSrc;
             }
           );
+        in
+        {
+          inherit
+            pkgs
+            craneLib
+            cargoSrc
+            src
+            commonArgs
+            cargoArtifacts
+            ;
+        };
+    in
+    {
+      packages = forAllSystems (
+        system:
+        let
+          inherit (mkBuildContext system)
+            pkgs
+            craneLib
+            src
+            commonArgs
+            cargoArtifacts
+            ;
 
           barp = craneLib.buildPackage (
             commonArgs
@@ -84,12 +97,10 @@
         {
           inherit barp emulatorjs barp-docker;
           default = barp;
-          barp-emulatorjs = emulatorjs;
-          docker = barp-docker;
         }
       );
 
-      overlays.default = final: prev: {
+      overlays.default = final: _prev: {
         barp = self.packages.${final.stdenv.hostPlatform.system}.barp;
         barp-emulatorjs = self.packages.${final.stdenv.hostPlatform.system}.emulatorjs;
       };
@@ -100,48 +111,26 @@
           imports = [ ./nix/module.nix ];
           nixpkgs.overlays = [ self.overlays.default ];
         };
-
-      nixosModules.barp = self.nixosModules.default;
-
       checks = forAllSystems (
         system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          inherit (pkgs) lib;
-          craneLib = crane.mkLib pkgs;
-          cargoSrc = craneLib.cleanCargoSource ./.;
-          src = lib.cleanSourceWith {
-            src = ./.;
-            filter =
-              path: type:
-              let
-                base = baseNameOf path;
-              in
-              !(builtins.elem base [
-                "target"
-                "result"
-                "saves"
-                "roms"
-                "secrets"
-                ".direnv"
-              ]);
-          };
-          cargoArtifacts = craneLib.buildDepsOnly {
-            pname = "barp";
-            version = "0.1.0";
-            src = cargoSrc;
-            strictDeps = true;
-          };
+          inherit (mkBuildContext system)
+            craneLib
+            cargoSrc
+            src
+            commonArgs
+            cargoArtifacts
+            ;
         in
         {
           # Clippy needs frontend/ for rust-embed, but still reuses cargoArtifacts.
-          clippy = craneLib.cargoClippy {
-            pname = "barp";
-            version = "0.1.0";
-            inherit src cargoArtifacts;
-            strictDeps = true;
-            cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-          };
+          clippy = craneLib.cargoClippy (
+            commonArgs
+            // {
+              inherit src cargoArtifacts;
+              cargoClippyExtraArgs = "--all-targets -- --deny warnings";
+            }
+          );
           fmt = craneLib.cargoFmt {
             src = cargoSrc;
           };

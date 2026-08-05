@@ -18,18 +18,15 @@ use axum::{
     Json, Router,
 };
 use rust_embed::RustEmbed;
-use serde::Serialize;
 use tokio::{fs, sync::Mutex};
 use tower_http::trace::{DefaultMakeSpan, DefaultOnFailure, DefaultOnResponse, TraceLayer};
 use tracing::{error, info, warn, Level};
 
 use crate::{
     auth::{self, maybe_user, LoginLimiter, User},
-    config::{
-        effective_options, merge_options, Config, EffectiveOptions, PasswordHashSource, UserConfig,
-    },
+    config::{effective_options, Config, PasswordHashSource, UserConfig},
     pages::{content_href, normalize_content_path, render_browse_page, render_play_page},
-    storage::{self, join_checked, save_file_exists, save_path_for_rom, validate_play_path},
+    storage::{self, join_checked, save_path_for_rom, validate_play_path},
     systems::SystemRegistry,
 };
 
@@ -45,11 +42,10 @@ const MAX_SAVE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
-    pub(crate) config: Arc<Config>,
+    pub(crate) port: u16,
     pub(crate) users: Arc<HashMap<String, User>>,
     pub(crate) sessions: Arc<Mutex<HashMap<String, String>>>,
     pub(crate) login_limiter: Arc<LoginLimiter>,
-    pub(crate) save_locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     pub(crate) roms_path: Arc<PathBuf>,
     pub(crate) saves_path: Arc<PathBuf>,
     pub(crate) emulatorjs_path: Arc<PathBuf>,
@@ -105,23 +101,12 @@ impl IntoResponse for AppError {
     }
 }
 
-#[derive(Debug, Serialize)]
-struct BootstrapResponse {
-    username: String,
-    options: EffectiveOptions,
-}
-
 pub(crate) fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/login", get(auth::login_page).post(auth::login_form))
         .route("/logout", post(auth::logout_form))
         .route("/healthz", get(|| async { "ok" }))
-        .route("/api/login", post(auth::login))
-        .route("/api/logout", post(auth::logout))
-        .route("/api/bootstrap", get(bootstrap))
-        .route("/api/browse", get(storage::browse_root))
-        .route("/api/browse/*path", get(storage::browse_path))
         .route("/api/roms/*path", get(storage::get_rom))
         .route(
             "/api/saves/*path",
@@ -162,10 +147,6 @@ pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
         "roms_path is not a directory: {}",
         roms_path.display()
     );
-    let _roms = fs::read_dir(&roms_path)
-        .await
-        .with_context(|| format!("roms_path is not readable: {}", roms_path.display()))?;
-
     fs::create_dir_all(&config.saves_path)
         .await
         .with_context(|| {
@@ -196,12 +177,12 @@ pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
             User {
                 username: username.clone(),
                 password_hash,
-                options: merge_options(&config.default_options, &user.option_overrides),
+                options: effective_options(&config.default_options, &user.option_overrides),
             },
         );
     }
 
-    let options = effective_options(&config.default_options);
+    let options = effective_options(&config.default_options, &Default::default());
     info!(
         roms_path = %roms_path.display(),
         saves_path = %saves_path.display(),
@@ -216,11 +197,10 @@ pub(crate) async fn load_state(config_path: &Path) -> anyhow::Result<AppState> {
     );
 
     Ok(AppState {
-        config: Arc::new(config),
+        port: config.port,
         users: Arc::new(users),
         sessions: Arc::new(Mutex::new(HashMap::new())),
         login_limiter: Arc::new(LoginLimiter::new()),
-        save_locks: Arc::new(Mutex::new(HashMap::new())),
         roms_path: Arc::new(roms_path),
         saves_path: Arc::new(saves_path),
         emulatorjs_path: Arc::new(emulatorjs_path),
@@ -387,17 +367,6 @@ fn asset_response(path: &str, asset: rust_embed::EmbeddedFile) -> Response {
     (headers, asset.data).into_response()
 }
 
-async fn bootstrap(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> Result<impl IntoResponse, AppError> {
-    let user = auth::require_user(&state, &headers).await?;
-    Ok(Json(BootstrapResponse {
-        username: user.username.clone(),
-        options: effective_options(&user.options),
-    }))
-}
-
 async fn content_page(state: &AppState, headers: &HeaderMap, path: &str) -> Response {
     let Some(user) = maybe_user(state, headers).await else {
         let next = content_href(path);
@@ -432,13 +401,11 @@ async fn content_page(state: &AppState, headers: &HeaderMap, path: &str) -> Resp
         Err(err) => return err.into_response(),
     };
     let save_path = save_path_for_rom(path);
-    let has_save = save_file_exists(state, &user.username, &format!("{save_path}.srm")).await;
     let mut response = Html(render_play_page(
         path,
         &save_path,
         &system.core,
-        &effective_options(&user.options),
-        has_save,
+        &user.options,
         system.threads,
     ))
     .into_response();

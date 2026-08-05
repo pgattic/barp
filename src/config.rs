@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct Config {
@@ -18,7 +18,7 @@ pub(crate) struct Config {
     pub(crate) system_mappings: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub(crate) struct Options {
     /// EmulatorJS shader setting. Use `"disabled"` or a built-in shader name
     /// such as `"crt-mattias.glslp"` / `"2xScaleHQ.glslp"` / `"bicubic"`.
@@ -54,52 +54,44 @@ pub(crate) enum PasswordHashSource {
 }
 
 impl UserConfig {
-    pub(crate) fn password_hash_source(&self, username: &str) -> anyhow::Result<PasswordHashSource> {
+    pub(crate) fn password_hash_source(
+        &self,
+        username: &str,
+    ) -> anyhow::Result<PasswordHashSource> {
         match (&self.password_hash, &self.password_hash_file) {
-            (Some(hash), None) => {
-                let hash = hash.trim();
-                anyhow::ensure!(
-                    !hash.is_empty(),
-                    "password_hash for user {username} must not be empty"
-                );
-                Ok(PasswordHashSource::Inline(hash.to_owned()))
-            }
+            (Some(hash), None) => Ok(PasswordHashSource::Inline(hash.trim().to_owned())),
             (None, Some(path)) => Ok(PasswordHashSource::File(path.clone())),
             (Some(_), Some(_)) => anyhow::bail!(
                 "user {username} must set only one of password_hash or password_hash_file"
             ),
-            (None, None) => anyhow::bail!(
-                "user {username} must set password_hash or password_hash_file"
-            ),
+            (None, None) => {
+                anyhow::bail!("user {username} must set password_hash or password_hash_file")
+            }
         }
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub(crate) struct EffectiveOptions {
     pub(crate) shader: String,
     pub(crate) smooth: bool,
     pub(crate) integer_scale: bool,
 }
 
-pub(crate) fn merge_options(defaults: &Options, overrides: &Options) -> Options {
-    Options {
-        shader: overrides.shader.clone().or_else(|| defaults.shader.clone()),
-        smooth: overrides.smooth.or(defaults.smooth),
-        integer_scale: overrides.integer_scale.or(defaults.integer_scale),
-    }
-}
-
-pub(crate) fn effective_options(options: &Options) -> EffectiveOptions {
+pub(crate) fn effective_options(defaults: &Options, overrides: &Options) -> EffectiveOptions {
     EffectiveOptions {
         // EmulatorJS defaults to shaders disabled; its RetroArch cfg also
         // forces video_smooth=false, so crisp pixels are the natural default.
-        shader: options
+        shader: overrides
             .shader
             .clone()
+            .or_else(|| defaults.shader.clone())
             .unwrap_or_else(|| "disabled".to_string()),
-        smooth: options.smooth.unwrap_or(false),
-        integer_scale: options.integer_scale.unwrap_or(false),
+        smooth: overrides.smooth.or(defaults.smooth).unwrap_or(false),
+        integer_scale: overrides
+            .integer_scale
+            .or(defaults.integer_scale)
+            .unwrap_or(false),
     }
 }
 
@@ -113,6 +105,24 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn resolves_partial_option_overrides() {
+        let defaults = Options {
+            shader: Some("disabled".into()),
+            smooth: Some(false),
+            integer_scale: Some(false),
+        };
+        let overrides = Options {
+            shader: None,
+            smooth: Some(true),
+            integer_scale: None,
+        };
+        let effective = effective_options(&defaults, &overrides);
+        assert_eq!(effective.shader, "disabled");
+        assert!(effective.smooth);
+        assert!(!effective.integer_scale);
+    }
+
+    #[test]
     fn password_hash_source_requires_exactly_one() {
         let inline = UserConfig {
             password_hash: Some(" $argon2id$v=19$m=8,t=1,p=1$c2FsdHNhbHQ$hash ".into()),
@@ -121,9 +131,7 @@ mod tests {
         };
         assert_eq!(
             inline.password_hash_source("player").unwrap(),
-            PasswordHashSource::Inline(
-                "$argon2id$v=19$m=8,t=1,p=1$c2FsdHNhbHQ$hash".into()
-            )
+            PasswordHashSource::Inline("$argon2id$v=19$m=8,t=1,p=1$c2FsdHNhbHQ$hash".into())
         );
 
         let file = UserConfig {
@@ -149,12 +157,5 @@ mod tests {
             option_overrides: Options::default(),
         };
         assert!(neither.password_hash_source("player").is_err());
-
-        let empty = UserConfig {
-            password_hash: Some("   ".into()),
-            password_hash_file: None,
-            option_overrides: Options::default(),
-        };
-        assert!(empty.password_hash_source("player").is_err());
     }
 }

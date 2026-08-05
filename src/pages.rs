@@ -172,7 +172,6 @@ pub(crate) fn render_play_page(
     save_path: &str,
     core: &str,
     options: &EffectiveOptions,
-    has_save: bool,
     threads: bool,
 ) -> String {
     let smooth = if options.smooth { "1" } else { "0" };
@@ -195,7 +194,7 @@ pub(crate) fn render_play_page(
       }}
     </style>
   </head>
-  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-shader="{shader}" data-smooth="{smooth}" data-integer-scale="{integer_scale}" data-has-save="{has_save}" data-threads="{threads}">
+  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-shader="{shader}" data-smooth="{smooth}" data-integer-scale="{integer_scale}" data-threads="{threads}">
     <div id="game"></div>
     <script src="/player.js"></script>
   </body>
@@ -206,7 +205,6 @@ pub(crate) fn render_play_page(
         shader = escape_html(&options.shader),
         smooth = smooth,
         integer_scale = integer_scale,
-        has_save = if has_save { "1" } else { "0" },
         threads = if threads { "1" } else { "0" },
     )
 }
@@ -299,10 +297,7 @@ fn parent_href(path: &str) -> String {
     if path.is_empty() {
         return String::new();
     }
-    let parent = path
-        .rsplit_once('/')
-        .map(|(head, _)| head)
-        .unwrap_or("");
+    let parent = path.rsplit_once('/').map(|(head, _)| head).unwrap_or("");
     content_href(parent)
 }
 
