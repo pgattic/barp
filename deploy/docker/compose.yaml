@@ -1,0 +1,12 @@
+services:
+  barp:
+    image: ghcr.io/pgattic/barp:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config.json:/config/config.json:ro
+      - ./roms:/roms:ro
+      - ./saves:/saves
+    # Match the image USER (1000:1000), or chown host dirs accordingly.
+    user: "1000:1000"
+    restart: unless-stopped

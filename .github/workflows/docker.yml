@@ -1,0 +1,50 @@
+name: docker
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build image
+        run: nix build .#barp-docker --print-out-paths | tee image-path.txt
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load and push
+        run: |
+          set -euo pipefail
+          IMAGE_TAR="$(cat image-path.txt)"
+          LOADED="$(docker load < "$IMAGE_TAR" | sed -n 's/^Loaded image: //p' | tail -1)"
+          echo "Loaded ${LOADED}"
+
+          REPO="ghcr.io/pgattic/barp"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="sha-${GITHUB_SHA::7}"
+          fi
+
+          docker tag "${LOADED}" "${REPO}:${VERSION}"
+          docker tag "${LOADED}" "${REPO}:latest"
+          docker push "${REPO}:${VERSION}"
+          docker push "${REPO}:latest"

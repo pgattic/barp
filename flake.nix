@@ -76,11 +76,16 @@
           );
 
           emulatorjs = pkgs.callPackage ./nix/emulatorjs.nix { };
+
+          barp-docker = pkgs.callPackage ./nix/docker.nix {
+            inherit barp emulatorjs;
+          };
         in
         {
-          inherit barp emulatorjs;
+          inherit barp emulatorjs barp-docker;
           default = barp;
           barp-emulatorjs = emulatorjs;
+          docker = barp-docker;
         }
       );
 

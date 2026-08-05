@@ -73,6 +73,7 @@ BARP = Boring Ahh ROM Player.
 - [x] Verify mobile browser on real phone
 - [ ] Verify 2+ controller couch co-op on real hardware
 - [ ] README: backing up saves/ (folder conventions and adding users are partially documented)
+- [x] OCI/Docker image via `dockerTools` + GHCR publish workflow
 
 ---
 

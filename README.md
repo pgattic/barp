@@ -121,6 +121,35 @@ The flake builds BARP with [crane](https://crane.dev). Cargo dependencies are
 built once into a reusable `cargoArtifacts` derivation, so source-only changes
 (including frontend assets) do not recompile the whole crate graph.
 
+## Docker
+
+Non-NixOS hosts can run the OCI image built by the flake (`packages.barp-docker`
+/ `packages.docker`). EmulatorJS is baked in at `/emulatorjs`; mount config,
+ROMs, and saves:
+
+```sh
+# Build locally (needs Nix), then load into Docker/Podman
+nix build .#barp-docker
+docker load < result
+
+# Or pull from GHCR once a release has been published
+docker pull ghcr.io/pgattic/barp:latest
+```
+
+Example layout under `deploy/docker/`:
+
+```sh
+cd deploy/docker
+cp config.example.json config.json   # set a real Argon2id password_hash
+mkdir -p roms saves
+docker compose up -d
+```
+
+`config.json` should use the in-container paths `/roms`, `/saves`, and
+`/emulatorjs` (see the example). The image runs as UID/GID `1000`; chown the
+host `saves/` directory (and any `password_hash_file` mounts) to match, or set
+`user:` in Compose.
+
 ## NixOS Module
 
 Import the flake module and declare users, ROM/save paths, and password hash

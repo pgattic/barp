@@ -1,0 +1,17 @@
+{
+  "roms_path": "/roms",
+  "saves_path": "/saves",
+  "emulatorjs_path": "/emulatorjs",
+  "port": 3000,
+  "default_options": {
+    "shader": "disabled",
+    "smooth": false,
+    "integer_scale": false
+  },
+  "system_mappings": {},
+  "users": {
+    "player1": {
+      "password_hash": "REPLACE_WITH_ARGON2ID_PHC_STRING"
+    }
+  }
+}
