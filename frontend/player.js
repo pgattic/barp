@@ -98,7 +98,7 @@ window.EJS_onGameStart = async () => {
     if (restoreFailed) {
       notify("Battery save could not be loaded — autosave is off this session");
     }
-    applyPhysicalButtonLayout();
+    applyGamepadDefaults();
     applyDisplay();
   }
 };
@@ -175,9 +175,10 @@ function patchCoreSettingsFile() {
   emu.getCoreSettings.__barpPatched = true;
 }
 
-function applyPhysicalButtonLayout() {
+function applyGamepadDefaults() {
   const emu = window.EJS_emulator;
-  if (!emu) return;
+  const player1Defaults = emu?.defaultControllers?.[0];
+  if (!player1Defaults) return;
 
   // EmulatorJS defaults to Xbox letter semantics (A on the bottom, B on the
   // right). Map RetroPad buttons by position instead: B/A bottom/right and
@@ -188,17 +189,38 @@ function applyPhysicalButtonLayout() {
     8: "BUTTON_2", // A: right  (DualShock circle)
     9: "BUTTON_4", // X: top    (DualShock triangle)
   };
-
-  for (const controllerSet of [emu.defaultControllers, emu.controls]) {
-    if (!controllerSet) continue;
-    for (const controls of Object.values(controllerSet)) {
-      if (!controls) continue;
-      for (const [button, gamepadInput] of Object.entries(faceButtons)) {
-        controls[button] ??= {};
-        controls[button].value2 = gamepadInput;
-      }
+  for (const controls of [player1Defaults, emu.controls?.[0]]) {
+    if (!controls) continue;
+    for (const [button, gamepadInput] of Object.entries(faceButtons)) {
+      controls[button] ??= {};
+      controls[button].value2 = gamepadInput;
     }
   }
+
+  // EmulatorJS only ships bindings for player 1; players 2-4 start empty, so a
+  // second pad does nothing until it is bound by hand. Clone player 1 rather
+  // than spelling out a layout, so we inherit whichever buttons the core
+  // actually uses (EmulatorJS prunes the unsupported ones before game start).
+  // Only value2 (gamepad) is copied: value is the keyboard binding, and a
+  // keypress drives every player it matches, so sharing it would move all four.
+  const template = {};
+  for (const [button, binding] of Object.entries(player1Defaults)) {
+    if (binding?.value2 !== undefined) template[button] = { value2: binding.value2 };
+  }
+
+  for (let player = 1; player < 4; player += 1) {
+    emu.defaultControllers[player] = structuredClone(template);
+    const controls = emu.controls?.[player];
+    if (!controls) continue;
+    // Fill gaps instead of overwriting, so pads bound through Control Settings
+    // keep their mapping.
+    for (const [button, binding] of Object.entries(template)) {
+      controls[button] ??= {};
+      controls[button].value2 ??= binding.value2;
+    }
+  }
+
+  emu.checkGamepadInputs?.();
 }
 
 // Browser gamepads are injected via EmulatorJS simulateInput, so RetroArch's
