@@ -81,3 +81,9 @@ You can also use [argon2.online](https://argon2.online/) to generate hashes.
   `client_max_body_size 64m;` (or NixOS `services.nginx.clientMaxBodySize = "64m"`).
 
 Build the image yourself with `nix build .#barp-docker` then `docker load < result`.
+
+## AI Usage Disclaimer
+
+This project was made with help from artificial intelligence. However, all major
+decisions were made, and all code output was reviewed, by a human who has
+real-world experience with the technologies involved.
