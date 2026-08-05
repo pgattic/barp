@@ -49,8 +49,11 @@ let
     default_options = toJsonOptions cfg.defaultOptions;
     system_mappings = cfg.systemMappings;
     users = lib.mapAttrs (
-      _username: user: {
-        password_hash_file = toString user.passwordHashFile;
+      _username: user:
+      lib.filterAttrs (_: value: value != null) {
+        password_hash = user.passwordHash;
+        password_hash_file =
+          if user.passwordHashFile == null then null else toString user.passwordHashFile;
         option_overrides = toJsonOptions user.optionOverrides;
       }
     ) cfg.users;
@@ -58,7 +61,17 @@ let
 
   configFile = pkgs.writeText "barp.json" (builtins.toJSON settings);
 
-  passwordHashFiles = lib.mapAttrsToList (_: user: toString user.passwordHashFile) cfg.users;
+  passwordHashFiles = lib.mapAttrsToList (_: user: toString user.passwordHashFile) (
+    lib.filterAttrs (_: user: user.passwordHashFile != null) cfg.users
+  );
+
+  userPasswordAssertions = lib.mapAttrsToList (username: user: {
+    assertion = (user.passwordHash != null) != (user.passwordHashFile != null);
+    message = ''
+      services.barp.users.${username} must set exactly one of passwordHash or
+      passwordHashFile.
+    '';
+  }) cfg.users;
 in
 {
   options.services.barp = {
@@ -121,11 +134,26 @@ in
           { ... }:
           {
             options = {
+              passwordHash = mkOption {
+                type = types.nullOr types.str;
+                default = null;
+                description = ''
+                  Inline Argon2 PHC password hash (Argon2id recommended).
+                  Mutually exclusive with `passwordHashFile`.
+
+                  Discouraged for production: the hash is written into the
+                  world-readable Nix store. Prefer `passwordHashFile` with
+                  agenix/sops for real deployments.
+                '';
+              };
               passwordHashFile = mkOption {
-                type = types.path;
+                type = types.nullOr types.path;
+                default = null;
                 description = ''
                   Path to a file containing an Argon2 PHC password hash
-                  (Argon2id recommended). See the README for argon2 CLI /
+                  (Argon2id recommended). Mutually exclusive with
+                  `passwordHash`. Prefer this for production so hashes stay
+                  out of the Nix store. See the README for argon2 CLI /
                   argon2.online generator settings.
                 '';
               };
@@ -149,7 +177,8 @@ in
         assertion = cfg.users != { };
         message = "services.barp.users must declare at least one user.";
       }
-    ];
+    ]
+    ++ userPasswordAssertions;
 
     networking.firewall.allowedTCPPorts = mkIf cfg.openFirewall [ cfg.port ];
 
