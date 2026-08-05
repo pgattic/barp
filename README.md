@@ -1,8 +1,8 @@
-# BARP
+# Boring Ahh ROM Player
 
-**BARP** (Boring Ahh ROM Player) is a small web app for browsing a ROM library
-and playing games in the browser via EmulatorJS. Saves are flat files per user.
-Fully stateless. No database, no admin UI, no metadata scraping.
+BARP is a small web app for browsing a ROM library and playing games in the
+browser via EmulatorJS. Saves are flat files per user. Fully stateless. No
+database, no admin UI, no metadata scraping.
 
 Deploy now with our easy-to-use Docker image or our dead-simple (docker-free)
 NixOS module!
@@ -40,7 +40,7 @@ cp config.example.json config.json
 cargo run -- --config config.json
 ```
 
-Point a browser at `http://localhost:3000`.
+Go to `http://localhost:3000` to play.
 
 ## Library layout
 
@@ -56,8 +56,8 @@ you can opt in via `system_mappings` if you accept that.
 ## Users and passwords
 
 Each user needs an **Argon2id** PHC hash, either inline as `password_hash` or in
-a file via `password_hash_file`. Prefer `passwordHashFile` + `agenix`/`sops-nix`
-on NixOS so hashes stay out of the world-readable Nix store.
+a file via `password_hash_file`. On NixOS, prefer `passwordHashFile` +
+`agenix`/`sops-nix` so hashes stay out of the world-readable Nix store.
 
 ```sh
 # Generate the password hash to store
