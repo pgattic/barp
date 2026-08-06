@@ -139,42 +139,30 @@ fn validate_folder_name(folder: &str) -> anyhow::Result<()> {
 }
 
 fn builtin_systems() -> &'static [BuiltinSystem] {
+    // Keep this list aligned with README "Supported Platforms": single-file
+    // cartridge / handheld systems that work without BIOS or multi-track CD
+    // setup. Other EmulatorJS cores remain reachable via `system_mappings`
+    // (folder → concrete core name).
+    //
+    // Nintendo DS is deliberately absent. Its cores bind battery saves to
+    // the cartridge at load time, and EmulatorJS only exposes the save
+    // path after boot, so BARP cannot restore a save before the game
+    // starts. Map a folder to `melonds` explicitly to opt in anyway.
+    //
+    // PSP is deliberately absent. EmulatorJS marks `ppsspp` as
+    // `save: false` (memory-stick saves, not a single .srm), so BARP
+    // cannot persist progress the way it does for other systems. Map a
+    // folder to `ppsspp` explicitly to opt in anyway.
     &[
-        BuiltinSystem {
-            target: "atari5200",
-            default_core: "a5200",
-            folders: &["atari5200", "atari-5200", "a5200"],
-        },
         BuiltinSystem {
             target: "vb",
             default_core: "beetle_vb",
             folders: &["vb", "virtualboy", "virtual-boy"],
         },
-        // Nintendo DS is deliberately absent. Its cores bind battery saves to
-        // the cartridge at load time, and EmulatorJS only exposes the save
-        // path after boot, so BARP cannot restore a save before the game
-        // starts. Map a folder to `melonds` explicitly to opt in anyway.
-        //
-        // PSP is deliberately absent. EmulatorJS marks `ppsspp` as
-        // `save: false` (memory-stick saves, not a single .srm), so BARP
-        // cannot persist progress the way it does for other systems. Map a
-        // folder to `ppsspp` explicitly to opt in anyway.
-        BuiltinSystem {
-            target: "arcade",
-            default_core: "fbneo",
-            folders: &[
-                "arcade",
-                "fbneo",
-                "fba",
-                "finalburnneo",
-                "neo-geo",
-                "neogeo",
-            ],
-        },
         BuiltinSystem {
             target: "nes",
             default_core: "fceumm",
-            folders: &["nes", "famicom", "fds"],
+            folders: &["nes", "famicom"],
         },
         BuiltinSystem {
             target: "gb",
@@ -187,11 +175,6 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
                 "gameboy-color",
                 "game-boy-color",
             ],
-        },
-        BuiltinSystem {
-            target: "coleco",
-            default_core: "gearcoleco",
-            folders: &["coleco", "colecovision"],
         },
         BuiltinSystem {
             target: "segaMS",
@@ -222,29 +205,9 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
             folders: &["gg", "gamegear", "game-gear", "sega-game-gear"],
         },
         BuiltinSystem {
-            target: "segaCD",
-            default_core: "genesis_plus_gx",
-            folders: &["segacd", "sega-cd", "megacd", "mega-cd"],
-        },
-        BuiltinSystem {
             target: "sega32x",
             default_core: "picodrive",
             folders: &["32x", "sega32x", "sega-32x"],
-        },
-        BuiltinSystem {
-            target: "sega",
-            default_core: "genesis_plus_gx",
-            folders: &["sega"],
-        },
-        BuiltinSystem {
-            target: "lynx",
-            default_core: "handy",
-            folders: &["lynx", "atari-lynx"],
-        },
-        BuiltinSystem {
-            target: "mame",
-            default_core: "mame2003_plus",
-            folders: &["mame"],
         },
         BuiltinSystem {
             target: "ngp",
@@ -261,21 +224,7 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
                 "turbografx16",
                 "turbografx-16",
                 "tg16",
-                "pcenginecd",
-                "pc-engine-cd",
-                "turbografx-cd",
-                "tg-cd",
             ],
-        },
-        BuiltinSystem {
-            target: "pcfx",
-            default_core: "mednafen_pcfx",
-            folders: &["pcfx", "pc-fx"],
-        },
-        BuiltinSystem {
-            target: "psx",
-            default_core: "pcsx_rearmed",
-            folders: &["psx", "ps1", "playstation", "playstation-1"],
         },
         BuiltinSystem {
             target: "ws",
@@ -299,11 +248,6 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
             folders: &["n64", "nintendo64", "nintendo-64"],
         },
         BuiltinSystem {
-            target: "3do",
-            default_core: "opera",
-            folders: &["3do"],
-        },
-        BuiltinSystem {
             target: "atari7800",
             default_core: "prosystem",
             folders: &["atari7800", "atari-7800", "a7800"],
@@ -317,86 +261,6 @@ fn builtin_systems() -> &'static [BuiltinSystem] {
             target: "atari2600",
             default_core: "stella2014",
             folders: &["atari2600", "atari-2600", "a2600"],
-        },
-        BuiltinSystem {
-            target: "jaguar",
-            default_core: "virtualjaguar",
-            folders: &["jaguar", "atari-jaguar"],
-        },
-        BuiltinSystem {
-            target: "segaSaturn",
-            default_core: "yabause",
-            folders: &["saturn", "sega-saturn"],
-        },
-        BuiltinSystem {
-            target: "amiga",
-            default_core: "puae",
-            folders: &["amiga", "amigacd32", "amiga-cd32"],
-        },
-        BuiltinSystem {
-            target: "c64",
-            default_core: "vice_x64sc",
-            folders: &["c64", "commodore64", "commodore-64"],
-        },
-        BuiltinSystem {
-            target: "c128",
-            default_core: "vice_x128",
-            folders: &["c128", "commodore128", "commodore-128"],
-        },
-        BuiltinSystem {
-            target: "pet",
-            default_core: "vice_xpet",
-            folders: &["pet", "commodore-pet"],
-        },
-        BuiltinSystem {
-            target: "plus4",
-            default_core: "vice_xplus4",
-            folders: &["plus4", "plus-4", "commodore-plus4", "commodore-plus-4"],
-        },
-        BuiltinSystem {
-            target: "vic20",
-            default_core: "vice_xvic",
-            folders: &["vic20", "vic-20", "commodore-vic20"],
-        },
-        BuiltinSystem {
-            target: "dos",
-            default_core: "dosbox_pure",
-            folders: &["dos", "msdos", "ms-dos"],
-        },
-        BuiltinSystem {
-            target: "same_cdi",
-            default_core: "same_cdi",
-            folders: &["cdi", "cd-i", "philips-cdi"],
-        },
-        BuiltinSystem {
-            target: "81",
-            default_core: "81",
-            folders: &["zx81", "zx-81"],
-        },
-        BuiltinSystem {
-            target: "fuse",
-            default_core: "fuse",
-            folders: &["zxspectrum", "zx-spectrum", "spectrum"],
-        },
-        BuiltinSystem {
-            target: "cap32",
-            default_core: "cap32",
-            folders: &["amstradcpc", "amstrad-cpc", "cpc"],
-        },
-        BuiltinSystem {
-            target: "prboom",
-            default_core: "prboom",
-            folders: &["doom"],
-        },
-        BuiltinSystem {
-            target: "fbalpha2012_cps1",
-            default_core: "fbalpha2012_cps1",
-            folders: &["cps1", "cps-1"],
-        },
-        BuiltinSystem {
-            target: "fbalpha2012_cps2",
-            default_core: "fbalpha2012_cps2",
-            folders: &["cps2", "cps-2"],
         },
     ]
 }
@@ -416,8 +280,10 @@ mod tests {
         let registry = SystemRegistry::new(&test_emulatorjs_path(), &HashMap::new()).unwrap();
         assert_eq!(registry.for_folder("NES").unwrap().core, "nes");
         assert_eq!(registry.for_folder("megadrive").unwrap().core, "segaMD");
-        assert_eq!(registry.for_folder("playstation").unwrap().core, "psx");
-        assert_eq!(registry.for_folder("zx-spectrum").unwrap().core, "fuse");
+        assert_eq!(registry.for_folder("game-boy-color").unwrap().core, "gb");
+        assert_eq!(registry.for_folder("tg16").unwrap().core, "pce");
+        assert!(registry.for_folder("playstation").is_none());
+        assert!(registry.for_folder("fds").is_none());
     }
 
     #[test]
@@ -435,15 +301,12 @@ mod tests {
     #[test]
     fn config_mappings_can_select_systems_or_concrete_cores() {
         let mappings = HashMap::from([
-            ("my-ps1".to_string(), "psx".to_string()),
-            ("accurate-ps1".to_string(), "mednafen_psx_hw".to_string()),
+            ("homebrew".to_string(), "nes".to_string()),
+            ("accurate-gba".to_string(), "mgba".to_string()),
         ]);
         let registry = SystemRegistry::new(&test_emulatorjs_path(), &mappings).unwrap();
-        assert_eq!(registry.for_folder("my-ps1").unwrap().core, "psx");
-        assert_eq!(
-            registry.for_folder("accurate-ps1").unwrap().core,
-            "mednafen_psx_hw"
-        );
+        assert_eq!(registry.for_folder("homebrew").unwrap().core, "nes");
+        assert_eq!(registry.for_folder("accurate-gba").unwrap().core, "mgba");
     }
 
     #[test]
@@ -456,7 +319,8 @@ mod tests {
 
     #[test]
     fn carries_thread_requirements_from_core_metadata() {
-        let registry = SystemRegistry::new(&test_emulatorjs_path(), &HashMap::new()).unwrap();
+        let mappings = HashMap::from([("dos".to_string(), "dosbox_pure".to_string())]);
+        let registry = SystemRegistry::new(&test_emulatorjs_path(), &mappings).unwrap();
         assert!(registry.for_folder("dos").unwrap().threads);
         assert!(!registry.for_folder("nes").unwrap().threads);
     }

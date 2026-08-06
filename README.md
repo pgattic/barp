@@ -1,15 +1,33 @@
 # Boring Ahh ROM Player
 
-BARP is a small web app for browsing a ROM library and playing games in the
-browser via EmulatorJS. Saves are flat files per user. Fully stateless. No
-database, no admin UI, no metadata scraping.
+BARP is a self-hosted ROM player for classic cartridge and handheld systems.
+Fully stateless. No database, no metadata scraping. Just point it at a folder!
 
-Deploy now with our easy-to-use Docker image or our dead-simple (docker-free)
-NixOS module!
+## Features
+
+- Starts up in 0.0038 seconds, uses 5 MiB of ram
+- Treats ROMs folder as read-only
+- Stores save files and savestates in user-specific folders for easy backup
+- No external state or database, just ROMs and saves/savestate files
+- Simple, straightforward setup for Docker and NixOS
+- Reads users and settings from a config file (no imperative configuration)
+
+## Supported Platforms
+
+Single-file cartridge / handheld ROMs. Top-level folder under `roms/` (aliases
+in parentheses):
+
+- **Nintendo**: `nes` (famicom), `snes`, `n64`, `gb`/`gbc`, `gba`, `vb`
+- **Sega**: `sms`, `genesis`/`megadrive`, `gg`, `32x`
+- **Atari**: `atari2600`, `atari7800`
+- **Other**: `pce` (tg16 HuCards), `ngp`, `ws`
+
+Systems that need BIOS files, multi-track CD images, or arcade ROM sets (PSX,
+Saturn, Sega CD, 3DO, Coleco, Lynx, Amiga, MAME/FBNeo, DOS, VICE, …) are not
+built in. You can still point a folder at any EmulatorJS core via
+`system_mappings` if you want to experiment.
 
 ## Quick start
-
-Three deployment options:
 
 **Docker / Compose** (see `deploy/docker/`):
 
@@ -44,14 +62,13 @@ Go to `http://localhost:3000` to play.
 
 ## Library layout
 
-Top-level folders under `roms/` are consoles (`nes`, `snes`, `genesis`, …).
-BARP picks the EmulatorJS core from that folder name (case-insensitive aliases
-included). Nested folders are fine; open a ROM file to play.
+Top-level folders under `roms/` are consoles (see Supported Platforms above).
+BARP picks the EmulatorJS core from that folder name (case-insensitive). Nested
+folders are fine; open a ROM file to play.
 
 Optional `system_mappings` in config rename folders or pin a specific core —
 see `config.example.json`. Some systems still need BIOS files EmulatorJS cannot
-ship. Nintendo DS and PSP are not built in (saves do not fit BARP’s model);
-you can opt in via `system_mappings` if you accept that.
+ship.
 
 ## Users and passwords
 
@@ -70,9 +87,48 @@ You can also use [argon2.online](https://argon2.online/) to generate hashes.
 
 ## Config and ops
 
-`config.example.json` is the reference for paths, player options
-(`shader` / `smooth` / `integer_scale` / `four_score`), and users. Default
-config path is `config.json`; override with `--config`.
+Default config path is `config.json`; override with `--config`. Same shape as
+`config.example.json`:
+
+```json
+{
+  "roms_path": "./roms",
+  "saves_path": "./saves",
+  "emulatorjs_path": "./emulatorjs",
+  "port": 3000,
+  "default_options": {
+    "shader": "disabled",
+    "smooth": false,
+    "integer_scale": false,
+    "four_score": false
+  },
+  "system_mappings": {
+    "fds": "nes",
+    "homebrew-nes": "fceumm"
+  },
+  "users": {
+    "player1": {
+      "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$..."
+    },
+    "player2": {
+      "password_hash_file": "./secrets/player2.hash",
+      "option_overrides": {
+        "shader": "crt-mattias.glslp",
+        "four_score": true
+      }
+    }
+  }
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `roms_path` / `saves_path` | Required. Absolute or relative paths. |
+| `emulatorjs_path` | Required. EmulatorJS `data/` dir (must contain `loader.js`). The Docker image and NixOS module take care of this field for you. |
+| `port` | Optional; default `3000`. |
+| `default_options` | Optional. `shader` is an EmulatorJS shader name or `"disabled"`; `smooth` / `integer_scale` control upscaling; `four_score` forces NES players 3–4 on (ignored elsewhere). |
+| `system_mappings` | Optional. Map a roms folder name to a builtin system target (`nes`, `snes`, …) or a concrete EmulatorJS core (`fceumm`, `pcsx_rearmed`, …). |
+| `users` | Required; at least one. Each user needs exactly one of `password_hash` or `password_hash_file`. `option_overrides` merges over `default_options`. |
 
 - **Docker:** mount `/config/config.json`, `/roms`, `/saves`. EmulatorJS is
   built-in. Image user is UID `1000`.
@@ -87,3 +143,12 @@ Build the image yourself with `nix build .#barp-docker` then `docker load < resu
 This project was made with help from artificial intelligence. However, all major
 decisions were made, and all code output was reviewed, by a human who has
 real-world experience with the technologies involved.
+
+## Thanks
+
+- The [EmulatorJS](https://emulatorjs.org/) project, for making this all possible
+- Retroarch/libretro, for providing easy-to-use emulator cores
+- [RomM](https://romm.app/), [Gaseous](https://github.com/gaseous-project/gaseous-server),
+  [Retrom](https://github.com/jmberesford/retrom), etc. for giving me inspiration
+- [copyparty](https://github.com/9001/copyparty) inspired me to make a solution
+  that was just config-based
