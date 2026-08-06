@@ -31,6 +31,11 @@ pub(crate) struct Options {
     /// Integer-scale the player canvas (RetroArch `video_scale_integer` + CSS).
     #[serde(default)]
     pub(crate) integer_scale: Option<bool>,
+    /// Force the NES Four Score on so players 3 and 4 are always connected.
+    /// fceumm otherwise enables it only for games in its CRC database, which
+    /// misses homebrew. NES only; other systems ignore it.
+    #[serde(default)]
+    pub(crate) four_score: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +81,7 @@ pub(crate) struct EffectiveOptions {
     pub(crate) shader: String,
     pub(crate) smooth: bool,
     pub(crate) integer_scale: bool,
+    pub(crate) four_score: bool,
 }
 
 pub(crate) fn effective_options(defaults: &Options, overrides: &Options) -> EffectiveOptions {
@@ -91,6 +97,10 @@ pub(crate) fn effective_options(defaults: &Options, overrides: &Options) -> Effe
         integer_scale: overrides
             .integer_scale
             .or(defaults.integer_scale)
+            .unwrap_or(false),
+        four_score: overrides
+            .four_score
+            .or(defaults.four_score)
             .unwrap_or(false),
     }
 }
@@ -110,16 +120,19 @@ mod tests {
             shader: Some("disabled".into()),
             smooth: Some(false),
             integer_scale: Some(false),
+            four_score: Some(true),
         };
         let overrides = Options {
             shader: None,
             smooth: Some(true),
             integer_scale: None,
+            four_score: None,
         };
         let effective = effective_options(&defaults, &overrides);
         assert_eq!(effective.shader, "disabled");
         assert!(effective.smooth);
         assert!(!effective.integer_scale);
+        assert!(effective.four_score);
     }
 
     #[test]

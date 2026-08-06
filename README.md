@@ -70,9 +70,9 @@ You can also use [argon2.online](https://argon2.online/) to generate hashes.
 
 ## Config and ops
 
-`config.example.json` is the reference for paths, display options
-(`shader` / `smooth` / `integer_scale`), and users. Default config path is
-`config.json`; override with `--config`.
+`config.example.json` is the reference for paths, player options
+(`shader` / `smooth` / `integer_scale` / `four_score`), and users. Default
+config path is `config.json`; override with `--config`.
 
 - **Docker:** mount `/config/config.json`, `/roms`, `/saves`. EmulatorJS is
   built-in. Image user is UID `1000`.

@@ -16,7 +16,7 @@ let
 
   cfg = config.services.barp;
 
-  displayOptionsType = types.submodule {
+  playerOptionsType = types.submodule {
     options = {
       shader = mkOption {
         type = types.nullOr types.str;
@@ -33,12 +33,23 @@ let
         default = null;
         description = "Whether to size the canvas to an integer multiple of native resolution.";
       };
+      fourScore = mkOption {
+        type = types.nullOr types.bool;
+        default = null;
+        description = ''
+          Whether to force the NES Four Score on, connecting players 3 and 4 in
+          every NES game. Without it the core only enables the adapter for games
+          in its CRC database, so homebrew such as Micro Mages stays 2-player.
+          Ignored by every other system.
+        '';
+      };
     };
   };
 
   toJsonOptions = opts: lib.filterAttrs (_: value: value != null) {
     inherit (opts) shader smooth;
     integer_scale = opts.integerScale;
+    four_score = opts.fourScore;
   };
 
   settings = {
@@ -106,13 +117,14 @@ in
     };
 
     defaultOptions = mkOption {
-      type = displayOptionsType;
+      type = playerOptionsType;
       default = {
         shader = "disabled";
         smooth = false;
         integerScale = false;
+        fourScore = false;
       };
-      description = "Default display options applied before per-user overrides.";
+      description = "Default player options applied before per-user overrides.";
     };
 
     systemMappings = mkOption {
@@ -158,7 +170,7 @@ in
                 '';
               };
               optionOverrides = mkOption {
-                type = displayOptionsType;
+                type = playerOptionsType;
                 default = { };
                 description = "Per-user display option overrides.";
               };

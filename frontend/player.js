@@ -6,6 +6,7 @@ const core = dataset.core;
 const shader = dataset.shader || "disabled";
 const smooth = (dataset.smooth || "0") === "1";
 const integerScale = (dataset.integerScale || "0") === "1";
+const fourScore = (dataset.fourScore || "0") === "1";
 const threads = (dataset.threads || "0") === "1";
 
 if (!path || !savePath || !core) {
@@ -160,6 +161,14 @@ function patchRetroArchConfig() {
     cfg += 'aspect_ratio_index = "21"\n';
     cfg += "video_force_aspect = true\n";
     cfg += `video_scale_integer = ${integerScale ? "true" : "false"}\n`;
+    // fceumm connects players 3-4 only for games its Four Score CRC database
+    // recognizes, which misses homebrew. Setting those ports to Gamepad
+    // (RETRO_DEVICE_SUBCLASS(JOYPAD, 1)) force-enables the adapter. Other cores
+    // read these port numbers as entirely different devices, so keep it to NES.
+    if (fourScore && (core === "nes" || core === "fceumm")) {
+      cfg += 'input_libretro_device_p3 = "513"\n';
+      cfg += 'input_libretro_device_p4 = "513"\n';
+    }
     return cfg;
   };
   GameManager.prototype.getRetroArchCfg.__barpPatched = true;

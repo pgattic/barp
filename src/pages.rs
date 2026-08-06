@@ -176,6 +176,7 @@ pub(crate) fn render_play_page(
 ) -> String {
     let smooth = if options.smooth { "1" } else { "0" };
     let integer_scale = if options.integer_scale { "1" } else { "0" };
+    let four_score = if options.four_score { "1" } else { "0" };
     format!(
         r#"<!doctype html>
 <html lang="en">
@@ -194,7 +195,7 @@ pub(crate) fn render_play_page(
       }}
     </style>
   </head>
-  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-shader="{shader}" data-smooth="{smooth}" data-integer-scale="{integer_scale}" data-threads="{threads}">
+  <body data-path="{path}" data-save-path="{save_path}" data-core="{core}" data-shader="{shader}" data-smooth="{smooth}" data-integer-scale="{integer_scale}" data-four-score="{four_score}" data-threads="{threads}">
     <div id="game"></div>
     <script src="/player.js"></script>
   </body>
@@ -205,6 +206,7 @@ pub(crate) fn render_play_page(
         shader = escape_html(&options.shader),
         smooth = smooth,
         integer_scale = integer_scale,
+        four_score = four_score,
         threads = if threads { "1" } else { "0" },
     )
 }
